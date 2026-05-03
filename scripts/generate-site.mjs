@@ -4,6 +4,7 @@ import path from 'node:path';
 const root = process.cwd();
 const siteDir = path.join(root, 'site');
 const chaptersDir = path.join(siteDir, 'chapters');
+const projectManifestPath = path.join(root, 'project-workbench', 'project-manifest.json');
 
 const chapters = [
   {
@@ -595,6 +596,13 @@ function createGlossary() {
 }
 
 function createProjects() {
+  const manifest = JSON.parse(fs.readFileSync(projectManifestPath, 'utf8'));
+  const projectRows = manifest.projects.map((project) => {
+    const blockerCount = project.blockedBy.length;
+    const artifactCount = project.requiredArtifacts.length;
+    return `| ${project.title} | ${project.stage} | \`${project.runtimeStatus}\` | ${blockerCount} | ${artifactCount} |`;
+  }).join('\n');
+
   return `# 项目实战总览
 
 7 个项目按系统演化顺序推进。
@@ -610,6 +618,16 @@ flowchart TB
 \`\`\`
 
 详见 [第 14 章：大数据方向项目实战](/chapters/14-projects)。
+
+## 执行状态
+
+| 项目 | 系统位置 | 当前状态 | 阻塞项 | 必需产物 |
+| --- | --- | --- | ---: | ---: |
+${projectRows}
+
+完整执行总表由 \`node scripts/generate-project-runbook.mjs\` 从 \`project-workbench/project-manifest.json\` 生成，维护在 \`docs/project-runbook.md\`。
+
+\`pnpm projects:verify\` 只证明项目目录、交付清单、关键 SQL / JSON / 文档和 manifest 状态一致；不证明数据库、消息队列、计算引擎或 AI 检索链路已经真实运行。
 `;
 }
 

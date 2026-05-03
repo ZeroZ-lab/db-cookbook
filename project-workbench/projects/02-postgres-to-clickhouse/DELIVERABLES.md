@@ -11,18 +11,20 @@
 - [x] PostgreSQL 源表到 ClickHouse 明细表字段映射：`mappings/orders-wide-mapping.md`。
 - [x] ClickHouse 明细表 DDL：`clickhouse/schema.sql`。
 - [x] ClickHouse 每日汇总表 DDL：`clickhouse/schema.sql`。
-- [ ] 排序键、分区键和保留周期说明。
+- [x] 排序键、分区键和保留周期说明：`docs/table-design-notes.md`。
 
 ## 核心任务产物
 
-- [ ] 初始同步脚本或伪代码。
-- [ ] 增量同步策略说明。
+- [x] 初始同步脚本或伪代码：`docs/sync-strategy.md`。
+- [x] 增量同步策略说明：`docs/sync-strategy.md`。
 - [ ] 明细查询 SQL。
 - [x] 汇总查询 SQL：`queries/daily-gmv.sql`。
 
 ## 验证证据
 
 - [x] 字段映射完整性检查：由 `pnpm projects:verify` 静态检查关键产物。
+- [x] 本地静态运行入口：`run.sh`。
+- [x] 运行记录模板：`reports/run-record-template.md`。
 - [ ] 明细行数对账。
 - [ ] 汇总指标对账。
 - [ ] 查询性能对比记录。

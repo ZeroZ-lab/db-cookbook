@@ -22,6 +22,8 @@ PostgreSQL
 - 字段映射见 `mappings/orders-wide-mapping.md`。
 - ClickHouse DDL 见 `clickhouse/schema.sql`。
 - 日 GMV 查询见 `queries/daily-gmv.sql`。
+- 表设计说明见 `docs/table-design-notes.md`。
+- 同步策略说明见 `docs/sync-strategy.md`。
 
 ## 核心链路
 
@@ -29,18 +31,22 @@ PostgreSQL
 - 定义哪些查询迁移到 ClickHouse。
 - 设计 MergeTree 表的 `PARTITION BY` 和 `ORDER BY`。
 - 设计每日汇总物化视图或汇总任务。
+- 记录初始同步、增量同步、失败重跑和迟到数据处理边界。
 
 ## 验收指标
 
 - [ ] 有 PostgreSQL 到 ClickHouse 的字段映射表。
 - [ ] 有 ClickHouse 明细表 DDL。
 - [ ] 有每日 GMV 汇总表 DDL 或 SQL。
-- [ ] 能解释排序键和分区键选择。
+- [x] 能解释排序键和分区键选择。
+- [x] 有初始同步、增量同步和失败重跑说明。
+- [x] 有运行记录模板区分静态检查与真实 ClickHouse 执行。
 - [ ] 能说明 ClickHouse 不替代业务事务库。
 
 ## 运行命令
 
 ```bash
+project-workbench/projects/02-postgres-to-clickhouse/run.sh
 pnpm projects:verify
 ```
 
@@ -56,6 +62,7 @@ clickhouse client --queries-file project-workbench/projects/02-postgres-to-click
 - 明细表字段必须能追溯回 PostgreSQL 源字段。
 - 汇总表必须写明刷新周期、迟到数据处理和口径版本。
 - 对账记录模板见 `reports/reconciliation-template.md`。
+- 运行记录模板见 `reports/run-record-template.md`。
 
 ## 复盘问题
 

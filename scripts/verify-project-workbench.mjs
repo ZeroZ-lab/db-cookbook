@@ -5,6 +5,7 @@ const root = process.cwd();
 const projectRoot = path.join(root, 'project-workbench', 'projects');
 const manifestPath = path.join(root, 'project-workbench', 'project-manifest.json');
 const runbookPath = path.join(root, 'docs', 'project-runbook.md');
+const siteProjectsPath = path.join(root, 'site', 'projects.md');
 
 const projects = [
   '01-postgresql-analytics',
@@ -36,9 +37,11 @@ function assert(condition, message) {
 assert(fs.existsSync(projectRoot), 'Missing project-workbench/projects directory');
 assert(fs.existsSync(manifestPath), 'Missing project-workbench/project-manifest.json');
 assert(fs.existsSync(runbookPath), 'Missing docs/project-runbook.md');
+assert(fs.existsSync(siteProjectsPath), 'Missing site/projects.md');
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 const runbook = fs.readFileSync(runbookPath, 'utf8');
+const siteProjects = fs.readFileSync(siteProjectsPath, 'utf8');
 assert(manifest.schemaVersion === 1, 'Project manifest schemaVersion must be 1');
 assert(Array.isArray(manifest.projects), 'Project manifest must include projects array');
 assert(manifest.projects.length === projects.length, 'Project manifest must describe exactly 7 projects');
@@ -57,6 +60,8 @@ for (const project of manifest.projects) {
   assert(allowedRuntimeStatuses.has(project.runtimeStatus), `Manifest project ${project.id} has unsupported runtimeStatus`);
   assert(runbook.includes(`### ${project.id} ${project.title}`), `Runbook missing project card for ${project.id}`);
   assert(runbook.includes(`\`${project.runtimeStatus}\``), `Runbook missing runtime status for ${project.id}`);
+  assert(siteProjects.includes(project.title), `Site projects page missing project title for ${project.id}`);
+  assert(siteProjects.includes(`\`${project.runtimeStatus}\``), `Site projects page missing runtime status for ${project.id}`);
   for (const forbidden of forbiddenRuntimeStatuses) {
     assert(
       !project.runtimeStatus.toLowerCase().includes(forbidden),
@@ -79,6 +84,8 @@ for (const project of manifest.projects) {
 }
 
 assert(runbook.includes('不证明数据库、消息队列、计算引擎或 AI 检索链路已经真实运行'), 'Runbook must preserve runtime boundary');
+assert(siteProjects.includes('docs/project-runbook.md'), 'Site projects page must point to the generated project runbook');
+assert(siteProjects.includes('不证明数据库、消息队列、计算引擎或 AI 检索链路已经真实运行'), 'Site projects page must preserve runtime boundary');
 
 for (const project of projects) {
   const file = path.join(projectRoot, project, 'README.md');
@@ -120,9 +127,22 @@ const projectTwoRoot = path.join(projectRoot, '02-postgres-to-clickhouse');
 const projectTwoMapping = path.join(projectTwoRoot, 'mappings', 'orders-wide-mapping.md');
 const projectTwoSchema = path.join(projectTwoRoot, 'clickhouse', 'schema.sql');
 const projectTwoQuery = path.join(projectTwoRoot, 'queries', 'daily-gmv.sql');
+const projectTwoTableNotes = path.join(projectTwoRoot, 'docs', 'table-design-notes.md');
+const projectTwoSyncStrategy = path.join(projectTwoRoot, 'docs', 'sync-strategy.md');
 const projectTwoReport = path.join(projectTwoRoot, 'reports', 'reconciliation-template.md');
+const projectTwoRunRecord = path.join(projectTwoRoot, 'reports', 'run-record-template.md');
+const projectTwoRunScript = path.join(projectTwoRoot, 'run.sh');
 
-for (const file of [projectTwoMapping, projectTwoSchema, projectTwoQuery, projectTwoReport]) {
+for (const file of [
+  projectTwoMapping,
+  projectTwoSchema,
+  projectTwoQuery,
+  projectTwoTableNotes,
+  projectTwoSyncStrategy,
+  projectTwoReport,
+  projectTwoRunRecord,
+  projectTwoRunScript
+]) {
   assert(fs.existsSync(file), `Missing project 2 artifact: ${file}`);
 }
 
@@ -136,6 +156,21 @@ const projectTwoQuerySql = fs.readFileSync(projectTwoQuery, 'utf8');
 assert(projectTwoQuerySql.includes('sumIf(item_amount'), 'Project 2 query must calculate paid GMV');
 assert(projectTwoQuerySql.includes('uniqExactIf(order_id'), 'Project 2 query must calculate paid orders');
 assert(projectTwoQuerySql.includes('analytics.daily_gmv'), 'Project 2 query must write or read daily_gmv');
+
+const projectTwoTableNotesText = fs.readFileSync(projectTwoTableNotes, 'utf8');
+assert(projectTwoTableNotesText.includes('排序键'), 'Project 2 table notes must explain sorting key');
+assert(projectTwoTableNotesText.includes('分区键'), 'Project 2 table notes must explain partition key');
+assert(projectTwoTableNotesText.includes('不承担订单状态约束'), 'Project 2 table notes must keep OLAP boundary explicit');
+
+const projectTwoSyncStrategyText = fs.readFileSync(projectTwoSyncStrategy, 'utf8');
+assert(projectTwoSyncStrategyText.includes('初始同步'), 'Project 2 sync strategy must cover initial sync');
+assert(projectTwoSyncStrategyText.includes('增量同步'), 'Project 2 sync strategy must cover incremental sync');
+assert(projectTwoSyncStrategyText.includes('失败重跑'), 'Project 2 sync strategy must cover rerun semantics');
+assert(projectTwoSyncStrategyText.includes('不解决跨系统强一致事务'), 'Project 2 sync strategy must preserve consistency boundary');
+
+const projectTwoRunScriptText = fs.readFileSync(projectTwoRunScript, 'utf8');
+assert(projectTwoRunScriptText.includes('ClickHouse client not found'), 'Project 2 run script must distinguish static checks from engine execution');
+assert(projectTwoRunScriptText.includes('Project 2 static checks passed'), 'Project 2 run script must report static check success');
 
 const projectThreeRoot = path.join(projectRoot, '03-cdc-realtime-warehouse');
 const projectThreeEvent = path.join(projectThreeRoot, 'events', 'order-status-changed.json');

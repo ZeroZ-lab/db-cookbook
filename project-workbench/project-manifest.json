@@ -48,10 +48,14 @@
       "requiredArtifacts": [
         "README.md",
         "DELIVERABLES.md",
+        "run.sh",
         "mappings/orders-wide-mapping.md",
         "clickhouse/schema.sql",
         "queries/daily-gmv.sql",
-        "reports/reconciliation-template.md"
+        "docs/table-design-notes.md",
+        "docs/sync-strategy.md",
+        "reports/reconciliation-template.md",
+        "reports/run-record-template.md"
       ]
     },
     {
