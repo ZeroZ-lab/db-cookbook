@@ -249,7 +249,29 @@ PostgreSQL 业务表 / 数仓事实表 / 文档 / 日志
 (Risk)-[:MITIGATED_BY]->(Policy)
 ```
 
-当用户问“这个产品上线前需要遵守哪些安全要求？”时，系统可以：
+具体数据示例：
+
+```cypher
+// 节点
+CREATE (p1:Product {name: '支付网关', version: '3.2'});
+CREATE (r1:Risk {name: 'SQL 注入风险', level: 'high'});
+CREATE (r2:Risk {name: '数据泄露风险', level: 'high'});
+CREATE (pol1:Policy {name: '安全开发规范', doc_id: 'SEC-001'});
+CREATE (pol2:Policy {name: '数据保护制度', doc_id: 'DP-003'});
+CREATE (per1:Person {name: '张工', role: '安全负责人'});
+CREATE (dept1:Department {name: '支付事业部'});
+
+// 边关系
+CREATE (p1)-[:HAS_RISK]->(r1);
+CREATE (p1)-[:HAS_RISK]->(r2);
+CREATE (r1)-[:MITIGATED_BY]->(pol1);
+CREATE (r2)-[:MITIGATED_BY]->(pol2);
+CREATE (pol1)-[:OWNED_BY]->(per1);
+CREATE (pol1)-[:APPLIES_TO]->(dept1);
+CREATE (pol2)-[:OWNED_BY]->(per1);
+```
+
+当用户问”这个产品上线前需要遵守哪些安全要求？”时，系统可以：
 
 ```text
 1. 用向量检索召回相关产品文档。
@@ -258,6 +280,28 @@ PostgreSQL 业务表 / 数仓事实表 / 文档 / 日志
 4. 把相关政策、负责人、适用部门和原文片段组装进上下文。
 5. 让 LLM 生成带来源的回答。
 ```
+
+例如，用 Cypher 查询”支付网关相关的所有安全政策和负责人”：
+
+```cypher
+MATCH (p:Product {name: '支付网关'})-[:HAS_RISK]->(r:Risk)
+      -[:MITIGATED_BY]->(pol:Policy)
+      -[:OWNED_BY]->(person:Person)
+RETURN r.name AS risk, r.level AS level,
+       pol.name AS policy, pol.doc_id AS doc_id,
+       person.name AS owner;
+```
+
+预期结果：
+
+```text
+| risk           | level | policy         | doc_id  | owner |
+|----------------|-------|----------------|---------|-------|
+| SQL 注入风险    | high  | 安全开发规范    | SEC-001 | 张工  |
+| 数据泄露风险    | high  | 数据保护制度    | DP-003  | 张工  |
+```
+
+这个查询只用了两跳（Product -> Risk -> Policy -> Person），就已经把产品面临的风险、对应的政策和负责人全部串联起来。如果只用 SQL，同样的查询需要多张表的递归 JOIN，而且路径长度不固定时会更复杂。
 
 这个案例体现图数据库的价值：它不是替代向量检索，而是把“相似内容”扩展成“有关系约束的上下文网络”。
 

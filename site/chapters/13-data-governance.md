@@ -283,6 +283,112 @@ RAG 评测记录
 如果源表字段变更，会影响哪些下游？
 ```
 
+为了让这些问题有答案，治理平台需要维护具体元数据。例如表目录：
+
+```sql
+CREATE TABLE table_catalog (
+    table_id        SERIAL PRIMARY KEY,
+    table_name      TEXT NOT NULL,
+    schema_name     TEXT NOT NULL,
+    layer           TEXT NOT NULL,        -- ODS / DWD / DWS / ADS
+    owner           TEXT NOT NULL,
+    update_freq     TEXT,                 -- daily / hourly / realtime
+    description     TEXT,
+    created_at      TIMESTAMP DEFAULT now()
+);
+```
+
+字段目录：
+
+```sql
+CREATE TABLE field_catalog (
+    field_id        SERIAL PRIMARY KEY,
+    table_id        INT REFERENCES table_catalog(table_id),
+    field_name      TEXT NOT NULL,
+    field_type      TEXT NOT NULL,
+    business_meaning TEXT,                -- 业务含义
+    calc_formula    TEXT,                 -- 计算公式
+    is_primary_key  BOOLEAN DEFAULT false,
+    is_nullable     BOOLEAN DEFAULT true
+);
+```
+
+指标字典：
+
+```sql
+CREATE TABLE metric_dict (
+    metric_id       SERIAL PRIMARY KEY,
+    metric_name     TEXT NOT NULL UNIQUE, -- 如 paid_gmv
+    business_def    TEXT NOT NULL,        -- 业务定义
+    calc_formula    TEXT NOT NULL,        -- 计算公式
+    time口径        TEXT,                 -- 按支付时间 / 创建时间
+    filter_cond     TEXT,                 -- 过滤条件，如 order_status = 'paid'
+    owner           TEXT NOT NULL,
+    version         INT DEFAULT 1
+);
+```
+
+数据质量规则：
+
+```sql
+CREATE TABLE quality_rules (
+    rule_id         SERIAL PRIMARY KEY,
+    table_name      TEXT NOT NULL,
+    rule_type       TEXT NOT NULL,        -- null_check / range_check / freshness / row_count
+    rule_sql        TEXT NOT NULL,
+    threshold       TEXT,
+    alert_channel   TEXT,                 -- email / slack / pagerduty
+    is_active       BOOLEAN DEFAULT true
+);
+```
+
+示例质量规则：
+
+```sql
+-- 空值检查
+INSERT INTO quality_rules (table_name, rule_type, rule_sql, threshold)
+VALUES ('orders', 'null_check',
+        'SELECT count(*) FROM orders WHERE order_id IS NULL',
+        '0');
+
+-- 行数波动检查
+INSERT INTO quality_rules (table_name, rule_type, rule_sql, threshold)
+VALUES ('orders', 'row_count',
+        'SELECT count(*) FROM orders WHERE created_at >= current_date',
+        '>= 70% of 7-day average');
+
+-- 时效性检查
+INSERT INTO quality_rules (table_name, rule_type, rule_sql, threshold)
+VALUES ('ads_sales_dashboard', 'freshness',
+        'SELECT extract(epoch FROM now() - max(updated_at)) / 3600 FROM ads_sales_dashboard',
+        '< 25 hours');
+```
+
+血缘关系可以用一张简单的依赖表记录：
+
+```sql
+CREATE TABLE data_lineage (
+    lineage_id      SERIAL PRIMARY KEY,
+    source_table    TEXT NOT NULL,
+    target_table    TEXT NOT NULL,
+    transform_type  TEXT,                 -- etl / dbt / spark / flink
+    task_name       TEXT,
+    updated_at      TIMESTAMP DEFAULT now()
+);
+```
+
+示例血缘数据：
+
+```sql
+INSERT INTO data_lineage (source_table, target_table, transform_type, task_name) VALUES
+('orders',           'ods_orders',           'airbyte',   'daily_order_sync'),
+('ods_orders',       'dwd_order_detail',     'dbt',       'dwd_order_detail'),
+('dwd_order_detail', 'dws_daily_sales',      'dbt',       'dws_daily_sales'),
+('dws_daily_sales',  'ads_sales_dashboard',  'dbt',       'ads_sales_dashboard');
+```
+
+这样当用户查询 `ads_sales_dashboard` 的血缘时，平台可以沿着 `data_lineage` 表回溯到 `ods_orders` 和 `orders`，形成完整链路。
+
 当用户打开一个 RAG 答案时，平台也应该能回答：
 
 ```text
