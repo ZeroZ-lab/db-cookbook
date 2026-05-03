@@ -1,0 +1,842 @@
+### 6.12 ETL/ELT实战案例
+
+前面学习了ETL最佳实践和ELT最佳实践，了解了两种架构的规范和方法。
+
+现在通过一个完整的实战案例，展示从需求分析到实施部署的全过程。
+
+**场景**：
+```yaml
+公司背景：
+  - 电商公司，业务快速增长
+  - 数据量达到TB级别
+  - 需要建立数据仓库
+  
+需求：
+  - 每日GMV报表
+  - 用户留存分析
+  - 商品销售排名
+  
+技术栈：
+  - 源系统：MySQL（业务库）
+  - 目标系统：PostgreSQL（数据仓库）
+  - 工具：Airflow + dbt + Airbyte
+  
+目标：
+  - 从零开始建立ETL/ELT系统
+  - 实现自动化数据处理
+  - 保证数据质量和性能
+```
+
+**问题**：
+- 如何从零开始设计ETL/ELT系统？
+- 如何选择合适的架构和工具？
+- 如何实施和优化？
+- 如何保证质量和性能？
+
+**答案**：**通过一个完整的实战案例，展示ETL/ELT系统的设计、实施、优化全过程**
+
+#### 一、需求分析
+
+##### 1.1 业务需求
+
+```yaml
+报表需求：
+  1. 每日GMV报表
+     - 按日期、城市、品类展示
+     - 每天8点前完成
+     
+  2. 用户留存报表
+     - 按用户注册日期分组
+     - 计算次日、7日、30日留存
+     - 每周一早上9点完成
+     
+  3. 商品销售排名
+     - 按GMV、销量排名
+     - Top 100商品
+     - 每天9点前完成
+
+数据需求：
+  - 订单数据（2020年至今）
+  - 用户数据（2020年至今）
+  - 商品数据（2020年至今）
+  - 用户行为数据（2022年至今）
+```
+
+##### 1.2 技术需求
+
+```yaml
+性能需求：
+  - ETL任务在4小时内完成
+  - 报表查询在5秒内完成
+  - 系统可用性99.9%
+  
+质量需求：
+  - 数据准确率99.9%
+  - 数据延迟不超过1天
+  - 数据完整性100%
+  
+扩展需求：
+  - 支持数据量增长10倍
+  - 支持新增数据源
+  - 支持新增报表
+```
+
+#### 二、架构设计
+
+##### 2.1 整体架构
+
+```text
+┌─────────────┐
+│  MySQL      │  源系统
+│  (业务库)    │
+└──────┬──────┘
+       │
+       │ Airbyte (CDC)
+       ↓
+┌─────────────┐
+│ PostgreSQL  │  数据仓库
+│  (ODS层)    │  原始数据
+└──────┬──────┘
+       │
+       │ dbt Transform
+       ↓
+┌─────────────┐
+│ PostgreSQL  │  数据仓库
+│  (DWD层)    │  明细层
+└──────┬──────┘
+       │
+       │ dbt Transform
+       ↓
+┌─────────────┐
+│ PostgreSQL  │  数据仓库
+│  (DWS层)    │  汇总层
+└──────┬──────┘
+       │
+       │ dbt Transform
+       ↓
+┌─────────────┐
+│ PostgreSQL  │  数据仓库
+│  (ADS层)    │  应用层
+└─────────────┘
+       ↓
+┌─────────────┐
+│ BI 工具      │  报表展示
+└─────────────┘
+```
+
+##### 2.2 工具选择
+
+```yaml
+数据同步：Airbyte
+  原因：
+  - 开源免费
+  - 支持CDC
+  - 配置简单
+  
+数据转换：dbt
+  原因：
+  - SQL-based，学习成本低
+  - 版本控制友好
+  - 模块化设计
+  
+工作流调度：Airflow
+  原因：
+  - 功能强大
+  - 社区活跃
+  - 可扩展性强
+```
+
+#### 三、实施步骤
+
+##### 3.1 第1步：数据库初始化
+
+```sql
+-- 1. 创建数据库
+CREATE DATABASE data_warehouse;
+
+-- 2. 创建Schema
+CREATE SCHEMA ods;     -- 原始数据层
+CREATE SCHEMA dwd;     -- 明细层
+CREATE SCHEMA dws;     -- 汇总层
+CREATE SCHEMA ads;     -- 应用层
+CREATE SCHEMA stg;     -- 中间层
+CREATE SCHEMA dim;     -- 维度层
+
+-- 3. 创建用户
+CREATE USER etl_user WITH PASSWORD 'secure_password';
+GRANT CONNECT ON DATABASE data_warehouse TO etl_user;
+GRANT USAGE ON SCHEMA ods, dwd, dws, ads, stg, dim TO etl_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA ods, dwd, dws, ads, stg, dim TO etl_user;
+
+-- 4. 创建Airbyte源表（ODS层）
+CREATE TABLE ods.orders (
+    order_id BIGINT PRIMARY KEY,
+    user_id BIGINT,
+    product_id BIGINT,
+    order_amount NUMERIC(10,2),
+    order_status VARCHAR(50),
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
+
+-- 5. 创建维度表（DIM层）
+CREATE TABLE dim.users (
+    user_id BIGINT PRIMARY KEY,
+    user_name VARCHAR(100),
+    city VARCHAR(100),
+    province VARCHAR(100),
+    register_date DATE
+);
+
+CREATE TABLE dim.products (
+    product_id BIGINT PRIMARY KEY,
+    product_name VARCHAR(200),
+    category VARCHAR(100),
+    brand VARCHAR(100),
+    price NUMERIC(10,2)
+);
+```
+
+##### 3.2 第2步：配置Airbyte数据同步
+
+```yaml
+# Airbyte配置文件：airbyte_config.yaml
+sourceDefinition:
+  name: mysql
+  connectionConfiguration:
+    host: mysql-server
+    port: 3306
+    database: business_db
+    username: root
+    password: password
+
+destinationDefinition:
+  name: postgres
+  connectionConfiguration:
+    host: postgres-server
+    port: 5432
+    database: data_warehouse
+    schema: ods
+    username: etl_user
+    password: secure_password
+
+streams:
+  - name: orders
+    namespace: public
+    destinationNamespace: ods
+    syncMode: cdc  # 使用CDC
+
+# 启动Airbyte
+docker-compose up -d
+
+# 创建同步连接
+# 通过Airbyte UI配置：
+# 1. Source: MySQL
+#    - host: mysql-server
+#    - database: business_db
+#    - tables: orders, users, products
+# 2. Destination: PostgreSQL
+#    - host: postgres-server
+#    - database: data_warehouse
+#    - schema: ods
+# 3. 启动同步
+```
+
+##### 3.3 第3步：dbt项目初始化
+
+```bash
+# 1. 创建dbt项目
+dbt init my_data_warehouse
+
+# 2. 项目结构
+cd my_data_warehouse
+
+# 3. 配置dbt_project.yml
+cat > dbt_project.yml <<EOF
+name: 'my_data_warehouse'
+version: '1.0.0'
+config-version: 2
+
+profile: 'my_data_warehouse'
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+snapshot-paths: ["snapshots"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  my_data_warehouse:
+    staging:
+      +schema: stg
+      +materialized: view
+    intermediate:
+      +schema: int
+      +materialized: table
+    marts:
+      +schema: dws
+      +materialized: table
+EOF
+
+# 4. 配置profiles.yml
+mkdir -p ~/.dbt
+cat > ~/.dbt/profiles.yml <<EOF
+my_data_warehouse:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      user: etl_user
+      password: secure_password
+      port: 5432
+      dbname: data_warehouse
+      schema: dws
+      threads: 4
+EOF
+
+# 5. 测试连接
+dbt debug
+```
+
+##### 3.4 第4步：创建dbt模型
+
+**Staging层（ODS → DWD）**：
+```sql
+-- models/staging/stg_orders.sql
+{{ config(
+    materialized='view',
+    schema='stg'
+) }}
+
+SELECT 
+    order_id,
+    user_id,
+    product_id,
+    order_amount,
+    order_status,
+    created_at,
+    updated_at
+FROM {{ source('ods', 'orders') }}
+WHERE order_status = 'completed'
+  AND order_amount > 0;
+```
+
+**Intermediate层（中间计算）**：
+```sql
+-- models/intermediate/int_order_user_metrics.sql
+{{ config(
+    materialized='table',
+    schema='int'
+) }}
+
+WITH orders AS (
+    SELECT * FROM {{ ref('stg_orders') }}
+)
+
+SELECT 
+    user_id,
+    COUNT(*) as order_count,
+    SUM(order_amount) as total_amount,
+    AVG(order_amount) as avg_amount,
+    MIN(created_at) as first_order_date,
+    MAX(created_at) as last_order_date
+FROM orders
+GROUP BY user_id;
+```
+
+**Marts层（DWS/ADS）**：
+```sql
+-- models/marts/finance/daily_gmv.sql
+{{ config(
+    materialized='table',
+    schema='dws'
+) }}
+
+WITH orders AS (
+    SELECT 
+        order_id,
+        TO_CHAR(created_at, 'YYYYMMDD')::INT as date_id,
+        user_id,
+        product_id,
+        order_amount
+    FROM {{ ref('stg_orders') }}
+)
+
+SELECT 
+    date_id,
+    COUNT(*) as order_count,
+    SUM(order_amount) as gmv,
+    AVG(order_amount) as avg_order_amount,
+    COUNT(DISTINCT user_id) as user_count
+FROM orders
+GROUP BY date_id;
+```
+
+##### 3.5 第5步：创建Airflow DAG
+
+```python
+# dags/daily_etl_dag.py
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.providers.dbt.operators.dbt import DbtRunOperator
+from datetime import datetime, timedelta
+import psycopg2
+
+default_args = {
+    'owner': 'data-team',
+    'depends_on_past': False,
+    'start_date': datetime(2026, 1, 1),
+    'retries': 2,
+    'retry_delay': timedelta(minutes=5),
+}
+
+dag = DAG(
+    'daily_etl_pipeline',
+    default_args=default_args,
+    description='每日ETL任务：数据同步+dbt转换',
+    schedule_interval='0 4 * * *',
+    catchup=False,
+    tags=['etl', 'daily'],
+)
+
+# 任务1：等待Airbyte同步完成（简化处理）
+# 实际使用Airbyte的Sensor任务
+def wait_airbyte_sync():
+    # 这里简化处理，实际应该检查Airbyte的同步状态
+    import time
+    time.sleep(60)  # 等待1分钟
+    print("Airbyte sync completed")
+
+wait_airbyte_task = PythonOperator(
+    task_id='wait_airbyte_sync',
+    python_callable=wait_airbyte_sync,
+    dag=dag,
+)
+
+# 任务2：运行dbt Staging模型
+dbt_staging = DbtRunOperator(
+    task_id='dbt_staging',
+    profiles_dir='/usr/local/airflow/dags/dbt',
+    dir='/usr/local/airflow/dags/dbt',
+    select=['staging'],
+    dag=dag,
+)
+
+# 任务3：运行dbt Intermediate模型
+dbt_intermediate = DbtRunOperator(
+    task_id='dbt_intermediate',
+    profiles_dir='/usr/local/airflow/dags/dbt',
+    dir='/usr/local/airflow/dags/dbt',
+    select=['intermediate'],
+    dag=dag,
+)
+
+# 任务4：运行dbt Marts模型
+dbt_marts = DbtRunOperator(
+    task_id='dbt_marts',
+    profiles_dir='/usr/local/airflow/dags/dbt',
+    dir='/usr/local/airflow/dags/dbt',
+    select=['marts'],
+    dag=dag,
+)
+
+# 任务5：数据质量检查
+def quality_check():
+    conn = psycopg2.connect(
+        host='postgres-server',
+        user='etl_user',
+        password='secure_password',
+        database='data_warehouse'
+    )
+    cursor = conn.cursor()
+    
+    # 检查1：数据量
+    cursor.execute("""
+        SELECT COUNT(*) FROM dws.daily_gmv 
+        WHERE date_id = (SELECT TO_CHAR(CURRENT_DATE - INTERVAL '1 day', 'YYYYMMDD')::INT)
+    """)
+    count = cursor.fetchone()[0]
+    
+    if count == 0:
+        raise Exception("No data in daily_gmv")
+    
+    # 检查2：GMV合理性
+    cursor.execute("""
+        SELECT gmv FROM dws.daily_gmv 
+        WHERE date_id = (SELECT TO_CHAR(CURRENT_DATE - INTERVAL '1 day', 'YYYYMMDD')::INT)
+    """)
+    gmv = cursor.fetchone()[0]
+    
+    if gmv < 0:
+        raise Exception(f"Negative GMV: {gmv}")
+    
+    cursor.close()
+    conn.close()
+    
+    print(f"Quality check passed: {count} rows, GMV={gmv}")
+
+quality_check_task = PythonOperator(
+    task_id='quality_check',
+    python_callable=quality_check,
+    dag=dag,
+)
+
+# 设置依赖关系
+wait_airbyte_task >> dbt_staging >> dbt_intermediate >> dbt_marts >> quality_check_task
+```
+
+#### 四、性能优化
+
+##### 4.1 增量模型优化
+
+```sql
+-- models/staging/stg_orders.sql
+{{ config(
+    materialized='incremental',
+    incremental_strategy='insert_overwrite',
+    unique_key='order_id',
+    schema='stg'
+) }}
+
+SELECT 
+    order_id,
+    user_id,
+    product_id,
+    order_amount,
+    order_status,
+    created_at,
+    updated_at
+FROM {{ source('ods', 'orders') }}
+WHERE order_status = 'completed'
+  AND order_amount > 0
+  AND updated_at >= (
+    SELECT COALESCE(MAX(updated_at), '1970-01-01'::TIMESTAMP) 
+    FROM {{ this }}
+)
+OR TRUE;  -- 首次运行
+```
+
+##### 4.2 分区表优化
+
+```sql
+-- 创建分区表
+CREATE TABLE dws.daily_gmv (
+    date_id INT,
+    order_count BIGINT,
+    gmv NUMERIC(20,2),
+    avg_order_amount NUMERIC(10,2),
+    user_count BIGINT
+) PARTITION BY RANGE (date_id);
+
+-- 创建分区（手动创建或自动创建）
+CREATE TABLE dws.daily_gmv_202601 PARTITION OF dws.daily_gmv
+    FOR VALUES FROM (20260101) TO (20260201);
+
+CREATE TABLE dws.daily_gmv_202602 PARTITION OF dws.daily_gmv
+    FOR VALUES FROM (20260201) TO (20260301);
+
+-- 创建索引
+CREATE INDEX idx_daily_gmv_date ON dws.daily_gmv(date_id);
+```
+
+##### 4.3 查询优化
+
+```sql
+-- 优化前：全表扫描
+EXPLAIN ANALYZE
+SELECT * FROM dws.daily_gmv WHERE date_id = 20260101;
+
+-- 优化后：使用索引
+-- 创建索引后，查询速度提升10倍
+```
+
+#### 五、监控和告警
+
+##### 5.1 性能监控
+
+```sql
+-- 创建性能监控表
+CREATE TABLE etl_performance (
+    run_id SERIAL PRIMARY KEY,
+    dag_id VARCHAR(100),
+    task_id VARCHAR(100),
+    execution_date DATE,
+    start_time TIMESTAMP,
+    end_time TIMESTAMP,
+    duration_seconds INT,
+    status VARCHAR(50)
+);
+
+-- 记录性能
+INSERT INTO etl_performance (dag_id, task_id, execution_date, start_time, end_time, duration_seconds, status)
+VALUES (
+    'daily_etl_pipeline',
+    'dbt_marts',
+    '2026-01-01',
+    '2026-01-01 04:00:00',
+    '2026-01-01 04:30:00',
+    1800,
+    'success'
+);
+```
+
+##### 5.2 数据质量监控
+
+```sql
+-- 创建数据质量监控表
+CREATE TABLE dq_metrics (
+    check_id SERIAL PRIMARY KEY,
+    check_date DATE,
+    table_name VARCHAR(100),
+    metric_name VARCHAR(100),
+    metric_value NUMERIC(20,2),
+    status VARCHAR(50),
+    checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 记录质量指标
+INSERT INTO dq_metrics (check_date, table_name, metric_name, metric_value, status)
+VALUES (
+    '2026-01-01',
+    'dws.daily_gmv',
+    'row_count',
+    (SELECT COUNT(*) FROM dws.daily_gmv WHERE date_id = 20260101),
+    'pass'
+);
+```
+
+#### 六、实施总结
+
+##### 6.1 项目成果
+
+```yaml
+第1周：需求分析和架构设计
+  - 需求文档完成
+  - 架构设计完成
+  - 技术栈确定
+  
+第2周：环境搭建
+  - PostgreSQL部署
+  - Airbyte部署
+  - dbt项目初始化
+  - Airflow部署
+  
+第3周：数据同步配置
+  - Airbyte源配置
+  - Airbyte目标配置
+  - CDC同步测试
+  
+第4周：dbt模型开发
+  - Staging层模型
+  - Intermediate层模型
+  - Marts层模型
+  - 测试编写
+  
+第5周：Airflow DAG开发
+  - DAG设计
+  - 任务开发
+  - 依赖配置
+  
+第6周：测试和优化
+  - 单元测试
+  - 集成测试
+  - 性能优化
+  
+第7周：监控和告警
+  - 性能监控
+  - 质量监控
+  - 告警配置
+  
+第8周：上线和运维
+  - 生产环境部署
+  - 文档完善
+  - 培训和交接
+```
+
+##### 6.2 关键指标
+
+```yaml
+性能指标：
+  - ETL执行时间：3小时
+  - 报表查询时间：2秒
+  - 数据延迟：1天
+  
+质量指标：
+  - 数据准确率：99.95%
+  - 数据完整性：100%
+  - 系统可用性：99.9%
+  
+业务指标：
+  - GMV报表：每天8点前完成
+  - 留存报表：每周一9点前完成
+  - 排名报表：每天9点前完成
+```
+
+#### 七、经验总结
+
+##### 7.1 成功经验
+
+```yaml
+1. 选择合适的工具
+   - Airbyte：简单高效
+   - dbt：SQL-based，易维护
+   - Airflow：功能强大
+   
+2. 分层架构
+   - ODS → DWD → DWS → ADS
+   - 职责清晰
+   - 易于维护
+   
+3. 增量处理
+   - CDC增量同步
+   - dbt增量模型
+   - 大幅提升性能
+   
+4. 充分测试
+   - 单元测试
+   - 集成测试
+   - 数据质量测试
+   
+5. 完善文档
+   - README文档
+   - 模型文档
+   - 运维文档
+```
+
+##### 7.2 踩过的坑
+
+```yaml
+陷阱1：Airbyte CDC延迟
+  问题：CDC同步有延迟
+  解决：增加等待时间
+  
+陷阱2：dbt增量模型配置
+  问题：incremental_strategy配置错误
+  解决：使用正确的策略
+  
+陷阱3：Airflow依赖配置
+  问题：任务依赖关系错误
+  解决：重新设计DAG
+  
+陷阱4：性能瓶颈
+  问题：大表查询慢
+  解决：创建索引、使用分区
+  
+陷阱5：数据质量问题
+  问题：源数据有错误
+  解决：增加数据清洗逻辑
+```
+
+#### 八、未来优化
+
+```yaml
+优化方向1：实时化
+  当前：T+1
+  目标：近实时
+  方案：使用Kafka + Flink
+  
+优化方向2：自动化
+  当前：部分手动
+  目标：全自动
+  方案：自动化测试、自动部署
+  
+优化方向3：扩展性
+  当前：支持TB级
+  目标：支持PB级
+  方案：分布式架构
+  
+优化方向4：智能化
+  当前：人工监控
+  目标：智能告警
+  方案：机器学习异常检测
+```
+
+#### 九、实战任务
+
+**任务1：设计一个简单的ETL/ELT系统**
+
+```yaml
+需求：
+  - 从MySQL同步用户表到PostgreSQL
+  - 每天运行一次
+  - 计算用户的RFM指标
+
+设计：
+  1. Airbyte配置MySQL → PostgreSQL同步
+  2. dbt模型：stg_users（清洗）
+  3. dbt模型：int_user_rfm（计算RFM）
+  4. Airflow DAG：编排任务
+```
+
+**任务2：评估项目风险**
+
+```yaml
+技术风险：
+  - Airbyte CDC可能不稳定
+  - 缓解：增加重试机制
+  
+性能风险：
+  - 数据量增长可能超预期
+  - 缓解：使用增量模型、分区表
+  
+质量风险：
+  - 源数据质量可能不好
+  - 缓解：增加数据质量检查
+```
+
+**任务3：制定项目计划**
+
+```yaml
+第1周：需求分析、架构设计
+第2周：环境搭建、工具部署
+第3周：数据同步配置
+第4周：dbt模型开发
+第5周：Airflow DAG开发
+第6周：测试和优化
+第7周：监控和告警
+第8周：上线和运维
+```
+
+#### 十、小结
+
+ETL/ELT实战案例通过一个完整的电商数据仓库项目，展示了从需求分析到实施部署的全过程。
+
+核心要点：
+- 需求分析：业务需求、技术需求、性能需求、质量需求
+- 架构设计：整体架构、工具选择（Airbyte+dbt+Airflow）
+- 实施步骤：8周完整实施计划
+  - 第1步：数据库初始化
+  - 第2步：Airbyte数据同步
+  - 第3步：dbt项目初始化
+  - 第4步：创建dbt模型（Staging/Intermediate/Marts）
+  - 第5步：创建Airflow DAG
+  - 第6步：性能优化
+  - 第7步：监控告警
+  - 第8步：上线运维
+- 性能优化：增量模型、分区表、查询优化
+- 监控告警：性能监控、数据质量监控
+- 项目成果：所有需求达成，关键指标达标
+- 经验总结：成功经验、踩过的坑、未来优化
+
+**至此，第6章"ETL/ELT"全部完成！**
+
+第6章涵盖内容：
+- 6.1 ETL vs ELT
+- 6.2 数据抽取
+- 6.3 数据转换
+- 6.4 数据加载
+- 6.5 常见ETL工具
+- 6.6 工作流调度
+- 6.7 数据质量监控
+- 6.8 错误处理和重试
+- 6.9 性能优化
+- 6.10 ETL最佳实践
+- 6.11 ELT最佳实践
+- 6.12 ETL/ELT实战案例
+
+下一章将进入第7章：批处理系统，了解批处理的模式、调度、优化等内容。

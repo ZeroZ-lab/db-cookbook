@@ -1,0 +1,688 @@
+### 6.8 错误处理和重试
+
+前面学习了数据质量监控，了解了如何监控数据质量和发送告警。
+
+当ETL任务出现错误时，如何处理？如何自动重试？如何避免错误影响下游任务？
+
+**场景**：
+```yaml
+数据仓库日常运行：
+  
+运维工程师："今天凌晨4点的ETL任务失败了"
+  
+数据工程师："是什么错误？"
+  
+运维工程师："数据库连接失败"
+  
+数据工程师："重试了吗？"
+  
+运维工程师："配置了重试3次，但都失败了"
+  
+新同事："如何处理各种错误？如何配置重试策略？"
+```
+
+**问题**：
+- ETL任务有哪些常见错误？
+- 如何分类和处理不同类型的错误？
+- 如何设计重试策略？
+- 如何避免错误级联影响？
+
+**答案**：**建立完善的错误处理和重试机制，根据错误类型采取不同策略，确保ETL任务的稳定性**
+
+#### 一、常见错误类型
+
+##### 1.1 临时性错误（Transient Errors）
+
+**定义**：暂时性故障，重试后可能成功
+
+**示例**：
+```yaml
+错误1：网络超时
+  示例：连接MySQL超时
+  原因：网络抖动
+  处理：重试
+  
+错误2：数据库连接失败
+  示例：PostgreSQL连接池满
+  原因：连接数不足
+  处理：等待后重试
+  
+错误3：资源不足
+  示例：内存不足
+  原因：系统资源紧张
+  处理：等待后重试
+  
+错误4：锁等待
+  示例：表被锁定
+  原因：其他任务正在写入
+  处理：等待后重试
+```
+
+**特点**：
+```yaml
+临时性：
+  - 不是持续性的错误
+  - 重试后可能成功
+  
+处理：
+  - 自动重试
+  - 增加重试间隔
+  - 限制重试次数
+```
+
+##### 1.2 持续性错误（Permanent Errors）
+
+**定义**：持续性故障，重试无法解决
+
+**示例**：
+```yaml
+错误1：SQL语法错误
+  示例：SELECT语句语法错误
+  原因：代码Bug
+  处理：修复代码
+  
+错误2：表不存在
+  示例：查询的表不存在
+  原因：表未创建或名称错误
+  处理：创建表或修正名称
+  
+错误3：权限不足
+  示例：没有INSERT权限
+  原因：权限配置错误
+  处理：授予权限
+  
+错误4：数据格式错误
+  示例：日期格式不正确
+  原因：源数据格式错误
+  处理：数据清洗
+```
+
+**特点**：
+```yaml
+持续性：
+  - 重试无法解决
+  - 需要人工干预
+  
+处理：
+  - 不重试
+  - 立即失败
+  - 发送告警
+```
+
+##### 1.3 逻辑错误（Logical Errors）
+
+**定义**：代码逻辑问题，数据不符合预期
+
+**示例**：
+```yaml
+错误1：数据量为0
+  示例：查询返回0行数据
+  原因：数据源没有新数据
+  处理：跳过或告警
+  
+错误2：数据异常
+  示例：GMV异常增长100倍
+  原因：数据错误或业务变化
+  处理：人工确认
+  
+错误3：依赖缺失
+  示例：上游任务未完成
+  原因：上游任务失败
+  处理：等待上游任务
+```
+
+#### 二、错误分类和处理策略
+
+##### 2.1 错误分类
+
+```python
+# 错误分类函数
+def classify_error(error):
+    """
+    根据错误类型分类
+    返回: 'transient' | 'permanent' | 'logical'
+    """
+    error_message = str(error).lower()
+    error_type = type(error).__name__
+    
+    # 临时性错误
+    transient_keywords = [
+        'timeout', 'connection', 'network', 'temporarily',
+        'deadlock', 'lock', 'resource'
+    ]
+    
+    if any(keyword in error_message for keyword in transient_keywords):
+        return 'transient'
+    
+    # 持续性错误
+    permanent_keywords = [
+        'syntax', 'permission', 'does not exist',
+        'invalid', 'malformed'
+    ]
+    
+    if any(keyword in error_message for keyword in permanent_keywords):
+        return 'permanent'
+    
+    # 默认为逻辑错误
+    return 'logical'
+```
+
+##### 2.2 处理策略
+
+```python
+# 错误处理策略
+def handle_error(error, retry_count=0):
+    """
+    根据错误类型采取不同策略
+    """
+    error_type = classify_error(error)
+    
+    if error_type == 'transient':
+        # 临时性错误：重试
+        if retry_count < 3:
+            wait_time = 2 ** retry_count * 5  # 指数退避：5秒、10秒、20秒
+            print(f"Temporary error, retrying in {wait_time} seconds...")
+            time.sleep(wait_time)
+            return 'retry'
+        else:
+            print(f"Max retries reached, giving up")
+            return 'fail'
+    
+    elif error_type == 'permanent':
+        # 持续性错误：立即失败
+        print(f"Permanent error, giving up: {error}")
+        send_alert(f"Permanent error: {error}")
+        return 'fail'
+    
+    else:  # logical
+        # 逻辑错误：根据具体情况处理
+        if 'no data' in str(error).lower():
+            print(f"No data found, skipping")
+            return 'skip'
+        else:
+            print(f"Logical error, manual review needed: {error}")
+            send_alert(f"Logical error: {error}")
+            return 'fail'
+```
+
+#### 三、重试策略设计
+
+##### 3.1 指数退避（Exponential Backoff）
+
+**定义**：每次重试间隔成倍增长
+
+**示例**：
+```python
+import time
+
+def retry_with_backoff(func, max_retries=3):
+    """
+    指数退避重试
+    """
+    for retry_count in range(max_retries):
+        try:
+            return func()
+        except Exception as e:
+            error_type = classify_error(e)
+            
+            if error_type == 'transient' and retry_count < max_retries - 1:
+                # 指数退避：5秒、10秒、20秒
+                wait_time = 2 ** retry_count * 5
+                print(f"Retry {retry_count + 1}/{max_retries} in {wait_time}s")
+                time.sleep(wait_time)
+            else:
+                raise e
+    
+# 使用示例
+def extract_data():
+    conn = pymysql.connect(...)
+    df = pd.read_sql(...)
+    conn.close()
+    return df
+
+# 自动重试
+df = retry_with_backoff(extract_data, max_retries=3)
+```
+
+##### 3.2 固定间隔重试
+
+```python
+def retry_with_fixed_delay(func, max_retries=3, delay=10):
+    """
+    固定间隔重试
+    """
+    for retry_count in range(max_retries):
+        try:
+            return func()
+        except Exception as e:
+            if retry_count < max_retries - 1:
+                print(f"Retry {retry_count + 1}/{max_retries} in {delay}s")
+                time.sleep(delay)
+            else:
+                raise e
+```
+
+##### 3.3 重试限制
+
+```yaml
+限制1：最大重试次数
+  示例：最多重试3次
+  原因：避免无限重试
+  
+限制2：最大重试时间
+  示例：最多重试1小时
+  原因：避免长时间阻塞
+  
+限制3：最大总次数
+  示例：1天内最多重试100次
+  原因：避免频繁重试
+```
+
+#### 四、Airflow中的错误处理
+
+##### 4.1 任务级别配置
+
+```python
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from datetime import datetime, timedelta
+
+# 默认参数
+default_args = {
+    'owner': 'data-team',
+    'depends_on_past': False,
+    'start_date': datetime(2026, 1, 1),
+    'retries': 3,  # 最多重试3次
+    'retry_delay': timedelta(minutes=5),  # 每次重试间隔5分钟
+    'retry_exponential_backoff': True,  # 启用指数退避
+    'max_retry_delay': timedelta(minutes=30),  # 最大重试间隔30分钟
+    'email_on_retry': False,  # 重试时不发送邮件
+    'email_on_failure': True,  # 失败时发送邮件
+}
+
+# 创建DAG
+dag = DAG(
+    'daily_etl_with_retry',
+    default_args=default_args,
+    schedule_interval='0 4 * * *',
+    catchup=False,
+)
+```
+
+##### 4.2 自定义重试逻辑
+
+```python
+from airflow.operators.python import PythonOperator
+from airflow.utils.dates import days_ago
+
+def smart_extract_data(**context):
+    """
+    带智能错误处理的数据抽取
+    """
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            # 尝试抽取数据
+            conn = pymysql.connect(...)
+            df = pd.read_sql(...)
+            conn.close()
+            
+            # 检查数据量
+            if len(df) == 0:
+                raise ValueError("No data extracted")
+            
+            return df
+            
+        except Exception as e:
+            retry_count += 1
+            error_type = classify_error(e)
+            
+            if error_type == 'transient' and retry_count < max_retries:
+                # 临时性错误：重试
+                wait_time = 2 ** (retry_count - 1) * 5
+                print(f"Retry {retry_count}/{max_retries} in {wait_time}s")
+                time.sleep(wait_time)
+            elif error_type == 'logical' and 'no data' in str(e).lower():
+                # 逻辑错误：没有数据
+                print("No data available, skipping")
+                return None
+            else:
+                # 其他错误：抛出异常
+                raise e
+
+# 创建任务
+extract_task = PythonOperator(
+    task_id='smart_extract_data',
+    python_callable=smart_extract_data,
+    dag=dag,
+)
+```
+
+##### 4.3 失败后的处理
+
+```python
+from airflow.operators.python import PythonOperator
+from airflow.utils.dates import days_ago
+
+def on_failure_callback(context):
+    """
+    任务失败时的回调函数
+    """
+    dag_id = context['dag'].dag_id
+    task_id = context['task'].task_id
+    exception = context['exception']
+    
+    # 记录错误日志
+    error_log = f"""
+    DAG: {dag_id}
+    Task: {task_id}
+    Exception: {exception}
+    Execution Date: {context['execution_date']}
+    """
+    
+    print(error_log)
+    
+    # 发送告警
+    send_email(
+        to='data-team@company.com',
+        subject=f'ETL Task Failed: {dag_id}.{task_id}',
+        body=error_log
+    )
+
+# 创建任务
+task = PythonOperator(
+    task_id='extract_data',
+    python_callable=extract_data,
+    on_failure_callback=on_failure_callback,
+    dag=dag,
+)
+```
+
+#### 五、错误隔离和容错
+
+##### 5.1 任务隔离
+
+**定义**：避免一个任务的错误影响其他任务
+
+```python
+# 场景：3个独立的表转换任务
+dwd_orders_task = PythonOperator(
+    task_id='dwd_orders_etl',
+    python_callable=dwd_orders_etl,
+    dag=dag,
+)
+
+dwd_users_task = PythonOperator(
+    task_id='dwd_users_etl',
+    python_callable=dwd_users_etl,
+    dag=dag,
+)
+
+dwd_products_task = PythonOperator(
+    task_id='dwd_products_etl',
+    python_callable=dwd_products_etl,
+    dag=dag,
+)
+
+# 策略1：即使某个任务失败，其他任务继续执行
+# 在Airflow中，默认就是这样的行为
+
+# 策略2：使用Trigger Rule
+# 即使上游任务失败，也执行下游任务
+final_task = PythonOperator(
+    task_id='final_task',
+    python_callable=final_task,
+    trigger_rule='all_done',  # 所有上游任务完成后执行（不管成功或失败）
+    dag=dag,
+)
+```
+
+##### 5.2 跳过策略
+
+```python
+from airflow.operators.python import PythonOperator
+from airflow.utils.trigger_rule import TriggerRule
+
+def load_data_if_available(**context):
+    """
+    如果有数据就加载，没有就跳过
+    """
+    data_file = '/data/orders_transformed.csv'
+    
+    if os.path.exists(data_file):
+        # 有数据，执行加载
+        df = pd.read_csv(data_file)
+        # 加载到数据库...
+        return f"Loaded {len(df)} rows"
+    else:
+        # 没有数据，跳过
+        print("No data available, skipping")
+        return "Skipped"
+
+# 创建任务（即使上游失败也执行）
+load_task = PythonOperator(
+    task_id='load_data_if_available',
+    python_callable=load_data_if_available,
+    trigger_rule=TriggerRule.ALL_DONE,  # 上游任务完成后执行
+    dag=dag,
+)
+```
+
+#### 六、错误监控和分析
+
+##### 6.1 错误日志记录
+
+```sql
+-- 创建错误日志表
+CREATE TABLE etl_error_logs (
+    log_id SERIAL PRIMARY KEY,
+    dag_id VARCHAR(100),
+    task_id VARCHAR(100),
+    execution_date DATE,
+    error_type VARCHAR(50),  -- transient/permanent/logical
+    error_message TEXT,
+    retry_count INT,
+    status VARCHAR(50),  -- retried/failed/skipped
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 记录错误
+INSERT INTO etl_error_logs (dag_id, task_id, execution_date, error_type, error_message, retry_count, status)
+VALUES (
+    'daily_etl_orders',
+    'extract_orders',
+    '2026-01-01',
+    'transient',
+    'Connection timeout',
+    3,
+    'retried'
+);
+```
+
+##### 6.2 错误分析
+
+```sql
+-- 错误统计（最近30天）
+SELECT 
+    dag_id,
+    task_id,
+    error_type,
+    COUNT(*) as error_count,
+    AVG(retry_count) as avg_retry_count
+FROM etl_error_logs
+WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY dag_id, task_id, error_type
+ORDER BY error_count DESC;
+
+-- Top 10错误
+SELECT 
+    error_message,
+    COUNT(*) as error_count
+FROM etl_error_logs
+WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY error_message
+ORDER BY error_count DESC
+LIMIT 10;
+```
+
+#### 七、常见误区
+
+**误区一：所有错误都重试**
+
+- **说明**：只有临时性错误才适合重试
+- **后果**：持续性错误也会重试，浪费资源
+- **正确理解**：
+  - 临时性错误：重试
+  - 持续性错误：立即失败
+  - 逻辑错误：根据情况处理
+
+**误区二：重试次数越多越好**
+
+- **说明**：重试次数要合理设置
+- **后果**：重试太多，延迟时间长
+- **正确理解**：
+  - 通常重试3-5次
+  - 设置最大重试时间
+  - 避免无限重试
+
+**误区三：所有任务都要成功**
+
+- **说明**：某些任务失败可以接受
+- **后果**：过度强调整体成功
+- **正确理解**：
+  - 核心任务必须成功
+  - 非核心任务可以失败
+  - 使用Trigger Rule灵活处理
+
+**误区四：忽略错误日志**
+
+- **说明**：错误日志是优化的重要依据
+- **后果**：同样错误重复发生
+- **正确理解**：
+  - 记录详细错误日志
+  - 定期分析错误模式
+  - 持续优化ETL
+
+**误区五：错误处理只在代码中**
+
+- **说明**：错误处理需要多层次
+- **后果**：单一层面处理不够
+- **正确理解**：
+  - 代码层：try-except
+  - 任务层：重试配置
+  - DAG层：失败策略
+  - 监控层：告警和恢复
+
+#### 八、实战任务
+
+**任务1：实现智能错误处理**
+
+```python
+def smart_etl_task():
+    """
+    带智能错误处理的ETL任务
+    """
+    max_retries = 3
+    
+    for retry_count in range(max_retries):
+        try:
+            # 抽取
+            df = extract_data()
+            
+            # 转换
+            df = transform_data(df)
+            
+            # 加载
+            load_data(df)
+            
+            # 成功
+            return "Success"
+            
+        except pymysql.OperationalError as e:
+            # 数据库连接错误（临时性）
+            if retry_count < max_retries - 1:
+                wait_time = 2 ** retry_count * 5
+                print(f"Connection error, retrying in {wait_time}s")
+                time.sleep(wait_time)
+            else:
+                raise e
+                
+        except pd.errors.EmptyDataError as e:
+            # 没有数据（逻辑错误）
+            print("No data available, skipping")
+            return "Skipped"
+            
+        except Exception as e:
+            # 其他错误（持续性）
+            print(f"Permanent error: {e}")
+            send_alert(f"ETL failed: {e}")
+            raise e
+```
+
+**任务2：配置Airflow重试**
+
+```python
+default_args = {
+    'owner': 'data-team',
+    'depends_on_past': False,
+    'start_date': datetime(2026, 1, 1),
+    'retries': 3,
+    'retry_delay': timedelta(minutes=5),
+    'retry_exponential_backoff': True,
+    'max_retry_delay': timedelta(minutes=30),
+    'email_on_retry': False,
+    'email_on_failure': True,
+    'email': ['data-team@company.com'],
+}
+
+dag = DAG(
+    'daily_etl',
+    default_args=default_args,
+    schedule_interval='0 4 * * *',
+    catchup=False,
+)
+```
+
+**任务3：分析错误日志**
+
+```sql
+-- 错误趋势分析
+SELECT 
+    DATE(created_at) as error_date,
+    error_type,
+    COUNT(*) as error_count
+FROM etl_error_logs
+WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY DATE(created_at), error_type
+ORDER BY error_date, error_type;
+
+-- 找出最频繁的错误
+SELECT 
+    error_message,
+    error_type,
+    COUNT(*) as error_count
+FROM etl_error_logs
+WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+GROUP BY error_message, error_type
+ORDER BY error_count DESC
+LIMIT 10;
+```
+
+#### 九、小结
+
+错误处理和重试是保证ETL任务稳定运行的关键，通过错误分类、智能重试、失败处理、错误隔离，提高ETL的可靠性。
+
+核心要点：
+- 错误类型：临时性错误、持续性错误、逻辑错误
+- 错误分类：根据错误特征自动分类
+- 处理策略：临时性错误重试、持续性错误立即失败、逻辑错误根据情况处理
+- 重试策略：指数退避、固定间隔、重试限制
+- Airflow配置：retries、retry_delay、retry_exponential_backoff
+- 错误隔离：任务独立、失败不影响其他任务
+- 跳过策略：使用Trigger Rule灵活处理
+- 错误监控：记录错误日志、分析错误模式
+- 最佳实践：智能错误处理、合理重试、核心任务必须成功
+
+下一节将学习性能优化，了解如何优化ETL任务的性能。

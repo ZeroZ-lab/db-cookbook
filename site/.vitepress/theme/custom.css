@@ -7,11 +7,43 @@
 }
 
 .VPDoc .content {
-  max-width: 900px;
+  max-width: 920px;
 }
 
 .vp-doc p {
   line-height: 1.9;
+  margin: 14px 0;
+}
+
+.vp-doc h2 {
+  margin-top: 44px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.vp-doc h3 {
+  margin-top: 32px;
+}
+
+.vp-doc table {
+  display: table;
+  width: 100%;
+  font-size: 14px;
+}
+
+.vp-doc th,
+.vp-doc td {
+  vertical-align: top;
+}
+
+.vp-doc li + li {
+  margin-top: 6px;
+}
+
+.vp-doc img {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  background: var(--vp-c-bg-soft);
 }
 
 .vp-doc blockquote {
@@ -19,6 +51,40 @@
   background: color-mix(in srgb, var(--vp-c-brand-1) 8%, transparent);
   padding: 12px 16px;
   border-radius: 8px;
+}
+
+.VPHome .VPFeature {
+  border-radius: 8px;
+}
+
+@media print {
+  .VPNav,
+  .VPLocalNav,
+  .VPSidebar,
+  .VPDocFooter,
+  .VPDocAside {
+    display: none !important;
+  }
+
+  .VPContent,
+  .VPDoc,
+  .VPDoc .container,
+  .VPDoc .content,
+  .vp-doc {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .vp-doc h1,
+  .vp-doc h2 {
+    break-after: avoid;
+  }
+
+  .vp-doc pre,
+  .vp-doc table,
+  .mermaid-block {
+    break-inside: avoid;
+  }
 }
 
 .mermaid-block {

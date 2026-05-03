@@ -1,0 +1,168 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Track the seven hands-on projects as explicit learning artifacts without claiming end-to-end runtime completion.",
+  "runtimeStatusContract": {
+    "allowedStatuses": [
+      "static-artifacts-verified",
+      "runtime-entry-present",
+      "not-end-to-end-run"
+    ],
+    "forbiddenStatuses": [
+      "completed",
+      "green",
+      "passed",
+      "production-ready",
+      "end-to-end-verified"
+    ]
+  },
+  "projects": [
+    {
+      "id": "01-postgresql-analytics",
+      "title": "PostgreSQL 电商数据分析库",
+      "stage": "PostgreSQL 基础与 SQL 分析",
+      "directory": "projects/01-postgresql-analytics",
+      "runtimeStatus": "runtime-entry-present",
+      "blockedBy": [
+        "current environment has no psql or createdb client",
+        "current environment has no docker runtime"
+      ],
+      "requiredArtifacts": [
+        "README.md",
+        "DELIVERABLES.md",
+        "run.sh",
+        "docker-compose.yml",
+        "reports/run-record-template.md"
+      ]
+    },
+    {
+      "id": "02-postgres-to-clickhouse",
+      "title": "PostgreSQL 到 ClickHouse 分析链路",
+      "stage": "OLTP 到 OLAP 分化",
+      "directory": "projects/02-postgres-to-clickhouse",
+      "runtimeStatus": "static-artifacts-verified",
+      "blockedBy": [
+        "requires running PostgreSQL source database",
+        "requires running ClickHouse engine",
+        "requires reconciliation run data"
+      ],
+      "requiredArtifacts": [
+        "README.md",
+        "DELIVERABLES.md",
+        "mappings/orders-wide-mapping.md",
+        "clickhouse/schema.sql",
+        "queries/daily-gmv.sql",
+        "reports/reconciliation-template.md"
+      ]
+    },
+    {
+      "id": "03-cdc-realtime-warehouse",
+      "title": "CDC 实时数仓 Demo",
+      "stage": "CDC 与实时计算",
+      "directory": "projects/03-cdc-realtime-warehouse",
+      "runtimeStatus": "static-artifacts-verified",
+      "blockedBy": [
+        "requires Debezium or equivalent CDC connector",
+        "requires Kafka runtime",
+        "requires Flink runtime",
+        "requires ClickHouse sink runtime"
+      ],
+      "requiredArtifacts": [
+        "README.md",
+        "DELIVERABLES.md",
+        "events/order-status-changed.json",
+        "kafka/topics.md",
+        "flink/realtime-gmv.sql",
+        "sinks/clickhouse-realtime.sql",
+        "docs/exactly-once-boundary.md"
+      ]
+    },
+    {
+      "id": "04-mini-lakehouse",
+      "title": "Mini Lakehouse",
+      "stage": "Lakehouse 架构",
+      "directory": "projects/04-mini-lakehouse",
+      "runtimeStatus": "static-artifacts-verified",
+      "blockedBy": [
+        "requires object storage or local warehouse runtime",
+        "requires Iceberg catalog",
+        "requires Spark runtime",
+        "requires Trino runtime"
+      ],
+      "requiredArtifacts": [
+        "README.md",
+        "DELIVERABLES.md",
+        "storage/object-layout.md",
+        "iceberg/orders.sql",
+        "trino/orders-analysis.sql",
+        "spark/build-order-items-wide.sql",
+        "docs/evolution-record.md"
+      ]
+    },
+    {
+      "id": "05-rag-vector-kb",
+      "title": "RAG 向量知识库",
+      "stage": "AI 时代数据基础设施",
+      "directory": "projects/05-rag-vector-kb",
+      "runtimeStatus": "static-artifacts-verified",
+      "blockedBy": [
+        "requires PostgreSQL with pgvector",
+        "requires embedding generation pipeline",
+        "requires retrieval evaluation execution"
+      ],
+      "requiredArtifacts": [
+        "README.md",
+        "DELIVERABLES.md",
+        "schema/pgvector.sql",
+        "queries/retrieve-with-permission.sql",
+        "evals/rag-eval-sample.json",
+        "docs/chunking-and-versioning.md",
+        "docs/permission-boundary.md",
+        "reports/retrieval-log-template.md"
+      ]
+    },
+    {
+      "id": "06-knowledge-graph-graphrag",
+      "title": "知识图谱与 GraphRAG",
+      "stage": "图数据库与 GraphRAG",
+      "directory": "projects/06-knowledge-graph-graphrag",
+      "runtimeStatus": "static-artifacts-verified",
+      "blockedBy": [
+        "requires Neo4j or NebulaGraph runtime",
+        "requires graph loading job",
+        "requires GraphRAG evaluation execution"
+      ],
+      "requiredArtifacts": [
+        "README.md",
+        "DELIVERABLES.md",
+        "ontology/entity-relation-types.md",
+        "data/triples-sample.jsonl",
+        "queries/neo4j-paths.cypher",
+        "queries/nebulagraph-paths.ngql",
+        "graphrag/context-template.md",
+        "reports/graph-query-log-template.md"
+      ]
+    },
+    {
+      "id": "07-governance-mini-platform",
+      "title": "数据治理 Mini Platform",
+      "stage": "治理、血缘、质量与信任",
+      "directory": "projects/07-governance-mini-platform",
+      "runtimeStatus": "static-artifacts-verified",
+      "blockedBy": [
+        "requires governance database runtime",
+        "requires metadata ingestion job",
+        "requires quality and policy checks execution"
+      ],
+      "requiredArtifacts": [
+        "README.md",
+        "DELIVERABLES.md",
+        "schema/governance.sql",
+        "catalog/metric-dictionary.md",
+        "lineage/lineage-sample.json",
+        "quality/rules.sql",
+        "policies/access-policies.md",
+        "reports/governance-audit-template.md"
+      ]
+    }
+  ]
+}

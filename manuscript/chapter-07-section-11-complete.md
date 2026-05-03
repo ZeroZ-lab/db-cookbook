@@ -1,0 +1,864 @@
+### 7.11 批处理常见问题与解决方案
+
+前面学习了批处理的理论知识、技术实现和最佳实践。
+
+实际工作中会遇到哪些常见问题？如何诊断和解决这些问题？
+
+**场景**：
+```yaml
+批处理系统问题排查：
+
+运维工程师："批处理任务失败了"
+
+数据工程师："什么问题？"
+
+运维工程师："不太清楚，只知道失败了"
+
+数据工程师："需要系统化的问题诊断方法"
+```
+
+**问题**：
+- 批处理有哪些常见问题？
+- 如何快速诊断问题？
+- 有哪些解决方案？
+- 如何避免问题发生？
+
+**答案**：**批处理常见问题包括数据倾斜、OOM错误、任务卡住、性能差、数据质量差等，需要系统化的问题诊断和解决方法**
+
+#### 一、数据倾斜问题
+
+##### 1.1 问题现象
+
+```yaml
+现象1：某个task特别慢
+  示例：
+    Task 1: 30分钟
+    Task 2-100: 2分钟
+  
+  诊断：
+    - 查看Spark UI
+    - 查看task时长分布
+    - 找出outlier
+
+现象2：某个节点OOM
+  示例：
+    Executor 1: OOM
+    Executor 2-10: 正常
+  
+  诊断：
+    - 查看executor日志
+    - 查看内存使用
+    - 确认OOM节点
+
+现象3：资源利用率低
+  示例：
+    大部分task已完成
+    少数task还在运行
+    资源空闲
+  
+  诊断：
+    - 查看集群资源
+    - 查看task进度
+    - 确认等待task
+
+现象4：Shuffle时间长
+  示例：
+    Shuffle时间：50分钟
+    计算时间：10分钟
+  
+  诊断：
+    - 查看Spark UI
+    - 查看shuffle读写
+    - 确认shuffle量
+```
+
+##### 1.2 问题诊断
+
+```python
+# 诊断脚本：识别数据倾斜
+
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, count
+
+class SkewDiagnostics:
+    def __init__(self):
+        self.spark = SparkSession.builder \
+            .appName("SkewDiagnostics") \
+            .getOrCreate()
+    
+    def diagnose_skew(self, df, group_by_key):
+        """诊断数据倾斜"""
+        # 方法1：查看每个key的数据量
+        key_distribution = df.groupBy(group_by_key) \
+            .agg(count("*").alias("count")) \
+            .orderBy(col("count").desc())
+        
+        print("=== Key Distribution ===")
+        key_distribution.show(20, truncate=False)
+        
+        # 方法2：统计倾斜度
+        stats = key_distribution.agg({
+            "count": "max",
+            "count": "min",
+            "count": "avg",
+            "count": "stddev"
+        }).collect()[0]
+        
+        max_count = stats[0]
+        min_count = stats[1]
+        avg_count = stats[2]
+        skew_ratio = max_count / avg_count if avg_count > 0 else 0
+        
+        print(f"\n=== Skew Statistics ===")
+        print(f"Max count: {max_count}")
+        print(f"Min count: {min_count}")
+        print(f"Avg count: {avg_count}")
+        print(f"Skew ratio: {skew_ratio:.2f}")
+        
+        # 判断是否倾斜
+        if skew_ratio > 10:
+            print("\n⚠️ 严重数据倾斜！")
+            print(f"建议：使用salting或broadcast join")
+        elif skew_ratio > 3:
+            print("\n⚠️ 轻度数据倾斜")
+            print(f"建议：提高并行度或优化join")
+        else:
+            print("\n✓ 数据分布均匀")
+        
+        return skew_ratio
+
+# 使用示例
+diagnostics = SkewDiagnostics()
+
+# 读取数据
+orders = spark.read.parquet("s3://data/dwd/fact_orders")
+
+# 诊断user_id倾斜
+skew_ratio = diagnostics.diagnose_skew(orders, "user_id")
+```
+
+##### 1.3 解决方案
+
+```python
+# 方案1：提高并行度
+
+from pyspark.sql.functions import col
+
+# 配置更高的shuffle并行度
+spark.conf.set("spark.sql.shuffle.partitions", "1000")
+
+# 或者重新分区
+df_repartitioned = df.repartition(1000, "user_id")
+
+# 方案2：Broadcast Join
+
+from pyspark.sql.functions import broadcast
+
+# 小表自动广播
+result = large_df.join(
+    broadcast(small_df),
+    "user_id"
+)
+
+# 手动广播
+result = large_df.join(
+    small_df.hint("broadcast"),
+    "user_id"
+)
+
+# 方案3：Salting（加盐）
+
+from pyspark.sql.functions import col, concat, lit, rand, regexp_replace, sum as _sum
+
+def process_with_salting(df, group_by_key, aggregate_col):
+    """使用salting处理倾斜"""
+    
+    # 1. 添加随机前缀（0-9）
+    df_with_salt = df.withColumn(
+        "salted_key",
+        concat(col(group_by_key), lit("_"), (rand() * 10).cast("int"))
+    )
+    
+    # 2. 第一次聚合（带salt）
+    stage1 = df_with_salt.groupBy("salted_key") \
+        .agg(_sum(aggregate_col).alias("partial_sum"))
+    
+    # 3. 去掉前缀
+    stage2 = stage1.withColumn(
+        group_by_key,
+        regexp_replace(col("salted_key"), "_\\d+$", "")
+    )
+    
+    # 4. 第二次聚合（去掉salt）
+    final_result = stage2.groupBy(group_by_key) \
+        .agg(_sum("partial_sum").alias("total_sum"))
+    
+    return final_result
+
+# 使用示例
+result = process_with_salting(orders, "user_id", "amount")
+
+# 方案4：两阶段聚合
+
+def two_stage_aggregate(df, group_by_keys, aggregate_col):
+    """两阶段聚合处理倾斜"""
+    
+    # 第一阶段：添加随机前缀并聚合
+    stage1 = df.withColumn("prefix", (rand() * 100).cast("int")) \
+        .groupBy("prefix", *group_by_keys) \
+        .agg(_sum(aggregate_col).alias("partial_sum"))
+    
+    # 第二阶段：去掉前缀并聚合
+    stage2 = stage1.groupBy(*group_by_keys) \
+        .agg(_sum("partial_sum").alias("total_sum"))
+    
+    return stage2
+
+# 使用示例
+result = two_stage_aggregate(
+    orders, 
+    ["user_id", "dt"], 
+    "amount"
+)
+
+# 方案5：分离倾斜数据
+
+def handle_skewed_data(df, group_by_key, threshold=100000):
+    """分离并单独处理倾斜数据"""
+    
+    # 1. 识别倾斜的key
+    skewed_keys = df.groupBy(group_by_key) \
+        .count() \
+        .filter(col("count") > threshold) \
+        .select(group_by_key)
+    
+    # 2. 分离倾斜和非倾斜数据
+    skewed_df = df.join(skewed_keys, group_by_key, "inner")
+    normal_df = df.join(skewed_keys, group_by_key, "left_anti")
+    
+    # 3. 分别处理
+    # 非倾斜数据：正常聚合
+    normal_result = normal_df.groupBy(group_by_key) \
+        .agg(_sum("amount").alias("total_sum"))
+    
+    # 倾斜数据：使用salting
+    skewed_result = process_with_salting(skewed_df, group_by_key, "amount")
+    
+    # 4. 合并结果
+    final_result = normal_result.union(skewed_result)
+    
+    return final_result
+```
+
+#### 二、OOM问题
+
+##### 2.1 问题现象
+
+```yaml
+现象1：Executor OOM
+  错误信息：
+    java.lang.OutOfMemoryError: Java heap space
+    Container killed by YARN for exceeding memory limits
+  
+  诊断：
+    - 查看executor日志
+    - 查看GC日志
+    - 确认内存配置
+
+现象2：Driver OOM
+  错误信息：
+    java.lang.OutOfMemoryError: Java heap space
+    at Driver
+  
+  诊断：
+    - 查看driver日志
+    - 检查collect操作
+    - 检查广播数据
+
+现象3：GC频繁
+  现象：
+    - GC时间占比高
+    - Full GC频繁
+  
+  诊断：
+    - 查看Spark UI的GC时间
+    - 查看GC日志
+    - 分析内存使用
+```
+
+##### 2.2 解决方案
+
+```python
+# 方案1：优化内存配置
+
+spark = SparkSession.builder \
+    .appName("OptimizedMemory") \
+    .config("spark.executor.memory", "8g") \
+    .config("spark.executor.memoryOverhead", "2g") \
+    .config("spark.driver.memory", "4g") \
+    .config("spark.memory.fraction", "0.8") \
+    .config("spark.memory.storageFraction", "0.3") \
+    .getOrCreate()
+
+# 方案2：减少executor cores
+
+# 不好的配置：cores太多，每个core内存少
+spark.conf.set("spark.executor.cores", "8")  # 每个core只有1g
+
+# 好的配置：cores适中，每个core内存多
+spark.conf.set("spark.executor.cores", "4")  # 每个core有2g
+
+# 方案3：使用序列化
+
+spark.conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+spark.conf.set("spark.kryoserializer.buffer.max", "256m")
+
+# 注册需要序列化的类
+spark.conf.set("spark.kryo.classesToRegister", 
+               "com.example.MyClass,com.example.AnotherClass")
+
+# 方案4：优化数据结构
+
+# 不好的做法：创建大量对象
+df.rdd.map(lambda x: MyClass(x.field1, x.field2, x.field3))
+
+# 好的做法：使用元组或基本类型
+df.rdd.map(lambda x: (x.field1, x.field2, x.field3))
+
+# 方案5：避免collect
+
+# 不好的做法：collect到driver
+result = df.collect()  # 可能OOM
+
+# 好的做法：使用foreach或者分区处理
+def process_partition(iterator):
+    for item in iterator:
+        # 处理每条数据
+        pass
+
+df.rdd.foreachPartition(process_partition)
+
+# 或者使用take
+result = df.take(1000)  # 只取前1000条
+
+# 方案6：分批处理
+
+def process_in_batches(df, batch_size=100000):
+    """分批处理数据"""
+    total_count = df.count()
+    batches = (total_count + batch_size - 1) // batch_size
+    
+    for i in range(batches):
+        offset = i * batch_size
+        # 使用limit和offset分批
+        batch = df.limit(batch_size).offset(offset)
+        
+        # 处理这批数据
+        process_batch(batch)
+
+# 方案7：增加executor数量
+
+# 动态分配
+spark.conf.set("spark.dynamicAllocation.enabled", "true")
+spark.conf.set("spark.dynamicAllocation.minExecutors", "10")
+spark.conf.set("spark.dynamicAllocation.maxExecutors", "100")
+
+# 固定分配
+spark.conf.set("spark.executor.instances", "50")
+```
+
+#### 三、任务卡住问题
+
+##### 3.1 问题现象
+
+```yaml
+现象1：任务一直running
+  表现：
+    - 任务状态：RUNNING
+    - 无进度更新
+    - 日志无输出
+  
+  诊断：
+    - 查看Spark UI
+    - 查看task状态
+    - 查看executor日志
+
+现象2：Shuffle卡住
+  表现：
+    - Shuffle阶段长时间运行
+    - 部分task完成，部分task等待
+    - 网络无流量
+  
+  诊断：
+    - 查看shuffle读写
+    - 查看网络连接
+    - 检查是否有executor失败
+
+现象3：等待锁
+  表现：
+    - 任务等待资源
+    - 队列满
+    - 集群无资源
+  
+  诊断：
+    - 查看YARN UI
+    - 查看集群资源
+    - 检查队列状态
+```
+
+##### 3.2 解决方案
+
+```python
+# 方案1：设置超时
+
+# 任务超时
+spark.conf.set("spark.task.maxFailures", "4")
+spark.conf.set("spark.executor.heartbeatInterval", "60s")
+spark.conf.set("spark.network.timeout", "800s")
+
+# 网络超时
+spark.conf.set("spark.rpc.lookupTimeout", "120s")
+spark.conf.set("spark.rpc.askTimeout", "600s")
+
+# 方案2：检测并kill卡住的任务
+
+import time
+from pyspark import SparkContext
+
+def monitor_task_timeout(timeout_minutes=60):
+    """监控任务超时"""
+    start_time = time.time()
+    
+    while True:
+        # 获取SparkContext
+        sc = SparkContext.getOrCreate()
+        
+        # 检查运行的job
+        running_jobs = [job for job in sc.statusTracker().getJobIdsForGroup(0) 
+                       if sc.statusTracker().isJobActive(job)]
+        
+        if not running_jobs:
+            print("No active jobs")
+            break
+        
+        # 检查是否超时
+        elapsed = (time.time() - start_time) / 60
+        if elapsed > timeout_minutes:
+            print(f"Task timeout after {elapsed:.2f} minutes")
+            
+            # 取消任务
+            for job in running_jobs:
+                sc.cancelJob(job)
+                print(f"Cancelled job {job}")
+            
+            break
+        
+        time.sleep(60)  # 每分钟检查一次
+
+# 方案3：优化shuffle
+
+# 减少shuffle数据量
+# 不好的做法：shuffle所有数据
+df.groupBy("key").agg(sum("value"))
+
+# 好的做法：先过滤再shuffle
+df.filter(col("value") > 0) \
+    .groupBy("key") \
+    .agg(sum("value"))
+
+# 使用map-side combiner
+# Spark自动使用combiner减少shuffle数据
+
+# 方案4：资源隔离
+
+# 使用队列隔离
+# YARN配置：
+# capacity-scheduler.xml
+<property>
+    <name>yarn.scheduler.capacity.root.queues</name>
+    <value>prod,dev</value>
+</property>
+
+<property>
+    <name>yarn.scheduler.capacity.root.prod.capacity</name>
+    <value>70</value>
+</property>
+
+<property>
+    <name>yarn.scheduler.capacity.root.dev.capacity</name>
+    <value>30</value>
+</property>
+
+# 方案5：提高并行度
+
+# 增加shuffle并行度
+spark.conf.set("spark.sql.shuffle.partitions", "1000")
+
+# 增加并行度
+df = df.repartition(1000)
+```
+
+#### 四、性能问题
+
+##### 4.1 问题现象
+
+```yaml
+现象1：任务运行时间长
+  表现：
+    - 任务运行数小时
+    - 性能下降
+    - 用户体验差
+  
+  诊断：
+    - 查看Spark UI
+    - 分析stage时长
+    - 找出慢stage
+
+现象2：CPU使用率低
+  表现：
+    - CPU使用率<50%
+    - 任务还在运行
+    - IO等待多
+  
+  诊断：
+    - 查看系统监控
+    - 查看磁盘IO
+    - 查看网络IO
+
+现象3：磁盘IO高
+  表现：
+    - 磁盘读写高
+    - 大量spill
+    - 性能差
+  
+  诊断：
+    - 查看磁盘监控
+    - 查看Spark UI的spill
+    - 分析内存使用
+```
+
+##### 4.2 解决方案
+
+```python
+# 方案1：优化查询
+
+# 不好的做法：SELECT *
+df.select("*")  # 读取所有列
+
+# 好的做法：只选择需要的列
+df.select("order_id", "user_id", "amount")
+
+# 不好的做法：重复计算
+df.groupBy("user_id").agg(sum("amount"))
+df.groupBy("user_id").agg(count("*"))
+
+# 好的做法：缓存中间结果
+df_user = df.groupBy("user_id").agg(
+    sum("amount").alias("total_amount"),
+    count("*").alias("order_count")
+)
+df_user.cache()  # 缓存
+
+# 方案2：使用缓存
+
+# 缓存表
+df.cache()
+df.persist(StorageLevel.MEMORY_AND_DISK)
+
+# 缓存维度表
+dim_users.cache()
+dim_products.cache()
+
+# 方案3：优化join
+
+# Broadcast Join（小表）
+result = large_df.join(broadcast(small_df), "key")
+
+# Sort Merge Join（大表join大表）
+result = large_df1.join(large_df2, "key")
+
+# Shuffle Hash Join（一个大表一个中等表）
+# Spark自动选择
+
+# 方案4：使用列式存储
+
+# Parquet格式
+df.write.parquet("s3://data/table")
+
+# ORC格式
+df.write.orc("s3://data/table")
+
+# 压缩
+df.write.parquet("s3://data/table", compression="snappy")
+
+# 方案5：分区优化
+
+# 按日期分区
+df.write.partitionBy("dt").parquet("s3://data/table")
+
+# 分区裁剪
+df = spark.read.parquet("s3://data/table")
+df_filtered = df.filter(col("dt") == "20260101")
+
+# 方案6：增加资源
+
+# 增加executor
+spark.conf.set("spark.executor.instances", "50")
+
+# 增加executor内存
+spark.conf.set("spark.executor.memory", "16g")
+
+# 增加executor cores
+spark.conf.set("spark.executor.cores", "8")
+```
+
+#### 五、数据质量问题
+
+##### 5.1 问题现象
+
+```yaml
+现象1：数据量异常
+  表现：
+    - 数据量突增/突降
+    - 与预期不符
+  
+  诊断：
+    - 对比历史数据
+    - 查看数据源
+    - 检查ETL逻辑
+
+现象2：数据格式错误
+  表现：
+    - 类型转换失败
+    - 解析错误
+  
+  诊断：
+    - 查看错误日志
+    - 检查数据格式
+    - 验证Schema
+
+现象3：空值过多
+  表现：
+    - 空值率异常高
+    - 关键字段为空
+  
+  诊断：
+    - 统计空值率
+    - 检查上游数据
+    - 检查ETL逻辑
+
+现象4：数据重复
+  表现：
+    - 主键重复
+    - 记录重复
+  
+  诊断：
+    - 检查去重逻辑
+    - 检查数据源
+    - 检查幂等性
+```
+
+##### 5.2 解决方案
+
+```python
+# 方案1：数据质量检查
+
+class DataQualityChecker:
+    def check_row_count(self, df, expected_range):
+        """检查行数"""
+        count = df.count()
+        
+        if expected_range[0] <= count <= expected_range[1]:
+            print(f"✓ Row count: {count} (正常)")
+            return True
+        else:
+            print(f"✗ Row count: {count} (异常，期望: {expected_range})")
+            return False
+    
+    def check_null_ratio(self, df, column, threshold=0.1):
+        """检查空值率"""
+        from pyspark.sql.functions import count, when, lit
+        
+        total = df.count()
+        null_count = df.select(when(col(column).isNull(), 1).otherwise(0)) \
+            .agg(sum("value")).collect()[0][0]
+        
+        null_ratio = null_count / total if total > 0 else 0
+        
+        if null_ratio <= threshold:
+            print(f"✓ Null ratio of {column}: {null_ratio:.2%} (正常)")
+            return True
+        else:
+            print(f"✗ Null ratio of {column}: {null_ratio:.2%} (异常，阈值: {threshold:.2%})")
+            return False
+    
+    def check_duplicates(self, df, key_column):
+        """检查重复"""
+        total = df.count()
+        unique = df.select(key_column).distinct().count()
+        
+        duplicate_count = total - unique
+        duplicate_ratio = duplicate_count / total if total > 0 else 0
+        
+        if duplicate_count == 0:
+            print(f"✓ No duplicates in {key_column}")
+            return True
+        else:
+            print(f"✗ Duplicates in {key_column}: {duplicate_count} ({duplicate_ratio:.2%})")
+            return False
+    
+    def check_value_range(self, df, column, min_value, max_value):
+        """检查值范围"""
+        from pyspark.sql.functions import min as _min, max as _max
+        
+        stats = df.agg(_min(column), _max(column)).collect()[0]
+        actual_min = stats[0]
+        actual_max = stats[1]
+        
+        if actual_min >= min_value and actual_max <= max_value:
+            print(f"✓ Value range of {column}: [{actual_min}, {actual_max}] (正常)")
+            return True
+        else:
+            print(f"✗ Value range of {column}: [{actual_min}, {actual_max}] (异常，期望: [{min_value}, {max_value}])")
+            return False
+
+# 使用示例
+checker = DataQualityChecker()
+
+# 检查数据质量
+all_checks_passed = True
+
+all_checks_passed &= checker.check_row_count(orders, (900000, 1100000))
+all_checks_passed &= checker.check_null_ratio(orders, "user_id", threshold=0.01)
+all_checks_passed &= checker.check_duplicates(orders, "order_id")
+all_checks_passed &= checker.check_value_range(orders, "amount", 0, 100000)
+
+if not all_checks_passed:
+    raise Exception("Data quality check failed")
+
+# 方案2：数据清洗
+
+# 过滤空值
+df_clean = df.filter(col("key").isNotNull())
+
+# 过滤异常值
+df_clean = df.filter((col("amount") > 0) & (col("amount") < 100000))
+
+# 去重
+df_clean = df.dropDuplicates(["key"])
+
+# 数据格式转换
+df_clean = df.withColumn("amount", col("amount").cast("decimal(10,2)"))
+
+# 方案3：数据修复
+
+# 填充空值
+from pyspark.sql.functions import coalesce, lit
+
+df_fixed = df.withColumn("amount", 
+                        coalesce(col("amount"), lit(0)))
+
+# 修正异常值
+df_fixed = df.withColumn("amount", 
+                        when(col("amount") < 0, 0)
+                        .otherwise(col("amount")))
+
+# 方案4：数据监控
+
+# 定期检查数据质量
+def schedule_data_quality_check(dt):
+    """定期数据质量检查"""
+    df = spark.read.parquet(f"s3://data/dwd/fact_orders/dt={dt}")
+    
+    checker = DataQualityChecker()
+    
+    checks = {
+        "row_count": checker.check_row_count(df, (900000, 1100000)),
+        "null_ratio": checker.check_null_ratio(df, "user_id"),
+        "duplicates": checker.check_duplicates(df, "order_id"),
+        "value_range": checker.check_value_range(df, "amount", 0, 100000)
+    }
+    
+    # 发送报告
+    send_quality_report(dt, checks)
+    
+    return all(checks.values())
+```
+
+#### 六、常见问题总结
+
+##### 6.1 问题分类
+
+```yaml
+性能问题：
+  - 数据倾斜
+  - OOM错误
+  - 任务卡住
+  - 性能差
+
+数据问题：
+  - 数据量异常
+  - 数据格式错误
+  - 空值过多
+  - 数据重复
+
+可靠性问题：
+  - 任务失败
+  - 任务超时
+  - 数据丢失
+  - SLA违约
+```
+
+##### 6.2 解决思路
+
+```yaml
+诊断步骤：
+  1. 观察现象
+     - 查看监控
+     - 查看日志
+     - 查看UI
+  
+  2. 定位原因
+     - 分析数据
+     - 分析配置
+     - 分析代码
+  
+  3. 解决问题
+     - 针对性优化
+     - 调整配置
+     - 修复代码
+  
+  4. 验证效果
+     - 观察指标
+     - 对比前后
+     - 确认解决
+
+预防措施：
+  - 开发阶段
+    - 使用采样数据
+    - 本地测试
+    - 代码审查
+  
+  - 测试阶段
+    - 功能测试
+    - 性能测试
+    - 压力测试
+  
+  - 生产阶段
+    - 监控告警
+    - 快速响应
+    - 持续优化
+```
+
+#### 七、小结
+
+批处理常见问题包括数据倾斜、OOM、任务卡住、性能差、数据质量差等。
+
+核心要点：
+- 数据倾斜：现象（task慢、OOM、资源利用率低）、诊断（查看分布、统计倾斜度）、解决方案（提高并行度、Broadcast、Salting、两阶段聚合、分离倾斜数据）
+- OOM问题：现象（Executor OOM、Driver OOM、GC频繁）、解决方案（优化内存配置、减少cores、序列化、优化数据结构、避免collect、分批处理、增加executor）
+- 任务卡住：现象（一直running、Shuffle卡住、等待锁）、解决方案（设置超时、监控kill、优化shuffle、资源隔离、提高并行度）
+- 性能问题：现象（运行时间长、CPU低、磁盘IO高）、解决方案（优化查询、使用缓存、优化join、列式存储、分区优化、增加资源）
+- 数据质量：现象（数据量异常、格式错误、空值过多、重复）、解决方案（质量检查、数据清洗、数据修复、数据监控）
+
+下一节将学习批处理实战任务，通过具体任务巩固所学知识。

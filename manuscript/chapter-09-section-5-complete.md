@@ -1,0 +1,672 @@
+### 9.5 OLAP监控与运维
+
+前面学习了OLAP数据摄入与更新，了解了如何高效导入数据和保证数据一致性。
+
+OLAP数据库如何监控？如何运维？如何发现和解决问题？如何保证系统稳定运行？
+
+**场景**：
+```yaml
+OLAP运维需求：
+
+运维工程师："OLAP数据库响应慢"
+
+数据工程师："查询在排队"
+
+架构师："需要监控和运维体系"
+```
+
+**问题**：
+- OLAP数据库需要监控哪些指标？
+- 如何搭建监控体系？
+- 如何排查性能问题？
+- 如何进行容量规划？
+- 如何保证高可用？
+
+**答案**：**OLAP数据库监控需要覆盖硬件、数据库、查询三个层面，通过指标采集、可视化、告警、自动化运维等手段，及时发现和处理问题，保证系统稳定可靠运行**
+
+---
+
+## 监控指标体系
+
+### 硬件层指标
+
+```yaml
+CPU指标：
+- 使用率：< 70%正常，> 80%告警，> 90%严重
+- 负载均衡：各核心负载均衡
+- 上下文切换：过多说明CPU竞争
+- 运行队列：队列长度过长
+
+内存指标：
+- 使用率：< 80%正常，> 90%告警
+- Swap使用：应该为0，使用说明内存不足
+- 缓存命中率：越高越好
+- OOM频率：不应该发生
+
+磁盘指标：
+- 使用率：< 70%正常，> 85%告警
+- IOPS：读写次数/秒
+- 吞吐量：MB/s
+- 延迟：读写延迟 < 10ms
+- 等待时间：%iowait < 20%
+
+网络指标：
+- 带宽使用：< 50%正常
+- 错误率：应该为0
+- 丢包率：< 0.1%
+- 连接数：监控连接数变化
+```
+
+### 数据库层指标
+
+```yaml
+集群指标：
+- 节点状态：所有节点应该在线
+- 分片健康：分片应该完整
+- 副本同步：副本应该同步
+- 集群负载：集群整体负载均衡
+
+表指标：
+- 表大小：监控表增长速度
+- 分区数：监控分区数量
+- 行数：监控数据量
+- 压缩比：压缩比是否正常
+
+查询指标：
+- QPS：每秒查询数
+- 响应时间：P50/P95/P99延迟
+- 排队数：查询排队数量
+- 失败率：查询失败率 < 1%
+
+导入指标：
+- 导入速率：MB/s
+- 导入延迟：导入到可见的延迟
+- 失败率：导入失败率 < 0.1%
+- 积压量：未处理的数据量
+```
+
+### 业务层指标
+
+```yaml
+数据质量：
+- 数据完整性：行数、列数检查
+- 数据准确性：关键指标校验
+- 数据时效性：导入延迟
+- 数据一致性：主从一致性
+
+用户满意度：
+- 查询成功率：> 99%
+- 查询响应时间：P95 < 5s
+- 系统可用性：> 99.9%
+- 数据准确性：100%
+```
+
+## 监控工具选型
+
+### Prometheus + Grafana
+
+```yaml
+架构：
+数据采集
+    ↓
+Prometheus存储
+    ↓
+Grafana可视化
+    ↓
+告警规则
+    ↓
+告警通知
+```
+
+```yaml
+优势：
+- 开源免费
+- 生态丰富
+- 灵活强大
+- 社区活跃
+
+劣势：
+- 学习曲线陡
+- 配置复杂
+- 存储有限
+
+适用：
+- 中小型集群
+- 技术团队
+- 自建监控
+```
+
+**ClickHouse Exporter配置**：
+```yaml
+# 安装clickhouse-exporter
+wget https://github.com/percona/clickhouse_exporter/releases/download/xxx/clickhouse_exporter
+chmod +x clickhouse_exporter
+
+# 配置文件
+cat > config.yml <<EOF
+server:
+  addr: "http://localhost:8123"
+  username: "default"
+  password: ""
+
+collector:
+  metrics:
+    - table
+    - query
+    - replication
+    - process
+EOF
+
+# 启动exporter
+./clickhouse_exporter --config=config.yml
+
+# Prometheus配置
+scrape_configs:
+  - job_name: 'clickhouse'
+    static_configs:
+      - targets: ['localhost:9116']
+```
+
+**Grafana Dashboard配置**：
+```json
+{
+  "dashboard": {
+    "title": "ClickHouse监控",
+    "panels": [
+      {
+        "title": "查询QPS",
+        "targets": [
+          {
+            "expr": "rate(clickhouse_query_total[1m])"
+          }
+        ]
+      },
+      {
+        "title": "查询延迟",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, clickhouse_query_duration_seconds)"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### 商业监控方案
+
+```yaml
+Datadog：
+- 优势：SaaS、开箱即用、集成度高
+- 劣势：成本高
+- 适用：不想自建、预算充足
+
+New Relic：
+- 优势：APM强、易用
+- 劣势：成本高、定制弱
+- 适用：应用监控
+
+云厂商监控：
+- 阿里云：云监控
+- 腾讯云：云监控
+- AWS：CloudWatch
+- 适用：云上部署
+```
+
+## 告警规则设计
+
+### 告警级别
+
+```yaml
+P0 - 严重：
+- 数据库宕机
+- 数据丢失
+- 查询全部失败
+- 响应：立即电话+短信
+
+P1 - 紧急：
+- 节点宕机
+- 查询延迟>60s
+- 导入失败
+- 响应：15分钟内处理
+
+P2 - 重要：
+- CPU>90%持续5分钟
+- 内存>90%
+- 磁盘>85%
+- 响应：1小时内处理
+
+P3 - 一般：
+- CPU>80%
+- 查询延迟>10s
+- 表增长异常
+- 响应：1天内处理
+```
+
+### 告警规则示例
+
+```yaml
+# CPU告警
+- alert: CPUUsageHigh
+  expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "CPU使用率过高"
+    description: "实例 {{ $labels.instance }} CPU使用率 {{ $value }}%"
+
+# 内存告警
+- alert: MemoryUsageHigh
+  expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "内存使用率过高"
+
+# 磁盘告警
+- alert: DiskUsageHigh
+  expr: (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) * 100 > 85
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "磁盘使用率过高"
+
+# 查询延迟告警
+- alert: QueryLatencyHigh
+  expr: histogram_quantile(0.95, clickhouse_query_duration_seconds) > 10
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "查询延迟过高"
+    description: "P95延迟 {{ $value }}秒"
+
+# 节点宕机告警
+- alert: NodeDown
+  expr: up == 0
+  for: 1m
+  labels:
+    severity: critical
+  annotations:
+    summary: "节点宕机"
+    description: "实例 {{ $labels.instance }} 无法连接"
+```
+
+## 性能问题排查
+
+### 慢查询排查
+
+```sql
+-- 1. 查看当前运行的查询
+SELECT 
+    query_id,
+    user,
+    query,
+    elapsed,
+    memory_usage,
+    row_count
+FROM system.processes
+WHERE elapsed > 10
+ORDER BY elapsed DESC;
+
+-- 2. 查看历史慢查询
+SELECT 
+    query_duration_ms,
+    type,
+    query,
+    exception_code
+FROM system.query_log
+WHERE type = 'QueryFinish'
+  AND query_duration_ms > 5000
+ORDER BY query_duration_ms DESC
+LIMIT 100;
+
+-- 3. 查看查询统计
+SELECT 
+    query,
+    COUNT(*) AS cnt,
+    AVG(query_duration_ms) AS avg_duration,
+    quantile(0.95)(query_duration_ms) AS p95_duration
+FROM system.query_log
+WHERE event_date = today()
+GROUP BY query
+ORDER BY avg_duration DESC
+LIMIT 10;
+```
+
+### 数据倾斜排查
+
+```sql
+-- 1. 检查各节点数据量
+SELECT 
+    hostname(),
+    sum(rows) AS total_rows,
+    formatReadableSize(sum(bytes_on_disk)) AS size
+FROM system.parts
+WHERE active
+GROUP BY hostname()
+ORDER BY total_rows DESC;
+
+-- 2. 检查各分区数据量
+SELECT 
+    partition,
+    sum(rows) AS total_rows,
+    formatReadableSize(sum(bytes_on_disk)) AS size
+FROM system.parts
+WHERE active
+GROUP BY partition
+ORDER BY total_rows DESC;
+
+-- 3. 检查数据分布
+SELECT 
+    shardNum,
+    replicaNum,
+    sum(rows) AS total_rows
+FROM system.parts
+WHERE active
+GROUP BY shardNum, replicaNum
+ORDER BY total_rows DESC;
+```
+
+### 导入问题排查
+
+```sql
+-- 1. 查看导入任务
+SHOW LOAD;
+
+-- 2. 查看导入详情
+SHOW LOAD FROM db_name WHERE LABEL = 'label_xxx';
+
+-- 3. 查看导入错误
+SELECT 
+    job_id,
+    label,
+    state,
+    tracking_url,
+    error_message
+FROM information_schema.load_jobs
+WHERE state != 'FINISHED'
+ORDER BY create_time DESC;
+
+-- 4. 查看Routine Load状态
+SHOW ROUTINE LOAD FOR job_name;
+
+-- 5. 查看导入统计
+SELECT 
+    label,
+    state,
+    rows_inserted,
+    rows_deleted,
+    execution_time_ms
+FROM information_schema.load_jobs
+WHERE create_time >= NOW() - INTERVAL 1 HOUR
+ORDER BY create_time DESC;
+```
+
+## 容量规划
+
+### 存储容量规划
+
+```yaml
+数据量估算：
+- 日增量：100GB
+- 月增量：3TB
+- 年增量：36TB
+
+保留策略：
+- 热数据（30天）：3TB
+- 温数据（90天）：6TB
+- 冷数据（365天）：27TB
+- 总计：36TB/年
+
+存储配置：
+- 单机容量：4TB
+- 副本数：2
+- 实际需求：36TB × 2 / 0.7 = 103TB
+- 节点数：103TB / 4TB ≈ 26节点
+
+扩容计划：
+- 当使用率>70%时扩容
+- 预留30%缓冲
+- 分批扩容：每次增加5-10节点
+```
+
+### 计算容量规划
+
+```yaml
+查询负载：
+- 日查询量：10万次
+- 高峰QPS：200
+- 平均查询时间：2s
+- 并发查询：400
+
+计算资源：
+- 单查询CPU：2核
+- 总CPU需求：400 × 2 = 800核
+- 单机CPU：40核
+- 节点数：800 / 40 × 2 = 40节点
+
+内存容量：
+- 单查询内存：2GB
+- 总内存需求：400 × 2GB = 800GB
+- 单机内存：128GB
+- 节点数：800GB / 128GB × 2 = 13节点
+
+综合评估：
+- 存储需求：26节点
+- CPU需求：40节点
+- 内存需求：13节点
+- 最终选择：40节点（取最大值）
+```
+
+### 网络容量规划
+
+```yaml
+网络带宽：
+- 查询返回数据：平均100MB/查询
+- 高峰QPS：200
+- 带宽需求：100MB × 200 = 20GB/s
+- 万兆网卡：10Gbps ≈ 1.25GB/s
+- 需要网卡数：20 / 1.25 = 16块
+
+集群内网络：
+- 数据重分布：查询的50%需要
+- 带宽需求：20GB/s × 50% = 10GB/s
+- 交换机：需要40Gbps交换机
+
+网络拓扑：
+- 万兆网卡到机架交换机
+- 机架交换机到核心交换机40Gbps
+- 核心交换机之间100Gbps
+```
+
+## 备份与恢复
+
+### 备份策略
+
+```yaml
+全量备份：
+- 频率：每周一次
+- 时间：业务低峰期
+- 方式：clickhouse-backup
+- 保留：4周（1个月）
+
+增量备份：
+- 频率：每天一次
+- 时间：业务低峰期
+- 方式：基于binlog
+- 保留：7天
+
+Binlog备份：
+- 频率：实时
+- 方式：异步同步到远程
+- 保留：3天
+```
+
+**ClickHouse备份工具**：
+```bash
+# 安装clickhouse-backup
+wget https://github.com/AlexAkulov/clickhouse-backup/releases/download/v2.1.0/clickhouse-backup_2.1.0_linux_amd64
+chmod +x clickhouse-backup_2.1.0_linux_amd64
+mv clickhouse-backup_2.1.0_linux_amd64 /usr/local/bin/clickhouse-backup
+
+# 配置文件
+cat > /etc/clickhouse-backup/config.yml <<EOF
+general:
+  remote_storage: "s3"
+  backups_to_keep_local: 4
+  backups_to_keep_remote: 8
+
+clickhouse:
+  username: "default"
+  password: ""
+  host: "localhost"
+  port: 9000
+
+s3:
+  access_key: "xxx"
+  secret_key: "xxx"
+  bucket: "clickhouse-backup"
+  endpoint: "https://s3.amazonaws.com"
+EOF
+
+# 创建全量备份
+clickhouse-backup create production_$(date +%Y%m%d)
+
+# 上传到S3
+clickhouse-backup upload production_$(date +%Y%m%d)
+
+# 定时任务（crontab）
+0 2 * * 0 /usr/local/bin/clickhouse-backup create "production_$(date +\%Y\%m\%d)" && /usr/local/bin/clickhouse-backup upload "production_$(date +\%Y\%m\%d)"
+```
+
+### 恢复演练
+
+```bash
+# 1. 列出备份
+clickhouse-backup list
+
+# 2. 下载备份
+clickhouse-backup download production_20250103
+
+# 3. 恢复备份
+clickhouse-backup restore production_20250103
+
+# 4. 验证数据
+clickhouse-client --query="SELECT COUNT(*) FROM sales_wide"
+
+# 恢复演练流程：
+# - 每月演练一次
+# - 在测试环境恢复
+# - 验证数据完整性
+# - 记录恢复时间
+```
+
+## 日常运维操作
+
+### 表维护
+
+```sql
+-- 1. 优化表（合并数据片段）
+OPTIMIZE TABLE sales_wide PARTITION '202501' FINAL;
+
+-- 2. 检查表
+CLICKHOUSE-client --query="CHECK TABLE sales_wide"
+
+-- 3. 修改表设置
+ALTER TABLE sales_wide MODIFY SETTING max_bytes_to_merge_at_max_space_in_pool = 10737418240;
+
+-- 4. 查看表大小
+SELECT 
+    database,
+    table,
+    formatReadableSize(sum(bytes)) AS size,
+    sum(rows) AS rows,
+    sum(bytes_on_disk) AS bytes_on_disk
+FROM system.parts
+WHERE active
+GROUP BY database, table
+ORDER BY bytes_on_disk DESC
+LIMIT 20;
+```
+
+### 分区管理
+
+```sql
+-- 1. 查看分区
+SHOW PARTITIONS sales_wide;
+
+-- 2. 删除旧分区
+ALTER TABLE sales_wide DROP PARTITION '202401';
+
+-- 3. 归档分区
+-- 导出到对象存储
+CLICKHOUSE-backup create --tables=sales_wide.202401 archive_202401
+CLICKHOUSE-backup upload archive_202401
+ALTER TABLE sales_wide DROP PARTITION '202401';
+
+-- 4. 分区迁移
+ALTER TABLE sales_wide MOVE PARTITION '202501' TO DISK 'ssd';
+```
+
+### 查询管理
+
+```sql
+-- 1. 查看当前查询
+SHOW PROCESSLIST;
+
+-- 2. 杀掉慢查询
+KILL QUERY 12345 WHERE query_duration_ms > 60000;
+
+-- 3. 查看用户资源使用
+SELECT 
+    user,
+    COUNT(*) AS query_count,
+    SUM(memory_usage) AS total_memory
+FROM system.processes
+GROUP BY user
+ORDER BY total_memory DESC;
+
+-- 4. 设置查询超时
+SET max_execution_time = 60;
+```
+
+## 总结
+
+**OLAP监控与运维核心要点**：
+1. **监控体系**：硬件、数据库、业务三层指标
+2. **告警规则**：分级告警、及时响应
+3. **问题排查**：慢查询、数据倾斜、导入问题
+4. **容量规划**：存储、计算、网络容量预估
+5. **备份恢复**：定期备份、恢复演练
+
+**实践建议**：
+1. **监控先行**：先搭建监控，再做优化
+2. **告警及时**：重要告警立即响应
+3. **定期演练**：备份恢复每月演练
+4. **文档完善**：运维文档、操作手册
+
+**运维检查清单**：
+```yaml
+每日：
+□ 检查告警
+□ 检查集群状态
+□ 检查慢查询
+□ 检查导入任务
+
+每周：
+□ 检查磁盘使用
+□ 检查数据增长
+□ 分析查询性能
+□ 优化慢查询
+
+每月：
+□ 容量评估
+□ 备份演练
+□ 性能测试
+□ 运维总结
+```

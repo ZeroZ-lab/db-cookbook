@@ -262,6 +262,34 @@ const chapters = [
   }
 ];
 
+const learningParts = [
+  {
+    title: '第一部分：PostgreSQL 建立数据库直觉',
+    range: [0, 3],
+    promise: '让读者先理解数据如何被组织、约束、查询、优化，以及单机数据库为什么会出现边界。'
+  },
+  {
+    title: '第二部分：从业务库走向分析系统',
+    range: [4, 6],
+    promise: '解释 OLTP / OLAP 分工、数仓建模和 ETL / CDC，让读者理解数据平台不是工具堆叠，而是系统目标分化后的结果。'
+  },
+  {
+    title: '第三部分：大数据计算与湖仓底座',
+    range: [7, 9],
+    promise: '把批处理、实时计算和 OLAP 引擎放到同一条链路中，理解历史分析、实时分析和交互分析的不同压力。'
+  },
+  {
+    title: '第四部分：AI 时代的数据基础设施',
+    range: [10, 13],
+    promise: '把向量、图、湖仓和治理纳入统一数据系统，理解 AI 应用为什么依赖可信、可追溯、可检索的数据底座。'
+  },
+  {
+    title: '第五部分：项目、路线和能力闭环',
+    range: [14, 17],
+    promise: '用项目实战、学习顺序、能力地图和最终目标，把全书从知识阅读落到可执行训练。'
+  }
+];
+
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
@@ -304,6 +332,16 @@ ${chapter.summary}
 :::
 ${visualPath}
 
+## 本章阅读框架
+
+| 阅读问题 | 本章回答方式 |
+| --- | --- |
+| 这个问题为什么出现？ | 从业务增长、数据规模、系统目标或 AI 应用压力切入。 |
+| 它解决什么问题？ | 提炼为一个核心判断，避免把概念写成孤立定义。 |
+| 它不解决什么问题？ | 在机制解释和常见误区中说明边界，防止工具崇拜。 |
+| 它在真实平台哪里出现？ | 放回 PostgreSQL、数仓、批流、OLAP、湖仓、向量、图和治理的演化链路。 |
+| 读完要会做什么？ | 通过场景案例和实战任务转成可练习的判断。 |
+
 \`\`\`mermaid
 ${chapter.diagram}
 \`\`\`
@@ -317,9 +355,19 @@ function linkFor(chapter) {
 }
 
 function createIndex() {
-  const list = chapters
-    .map((chapter) => `- [${chapter.chapter}. ${chapter.title}](${linkFor(chapter)})：${chapter.summary}`)
-    .join('\n');
+  const partSections = learningParts
+    .map((part) => {
+      const items = chapters
+        .filter((chapter) => chapter.chapter >= part.range[0] && chapter.chapter <= part.range[1])
+        .map((chapter) => `- [${chapter.chapter}. ${chapter.title}](${linkFor(chapter)})：${chapter.summary}`)
+        .join('\n');
+      return `### ${part.title}
+
+${part.promise}
+
+${items}`;
+    })
+    .join('\n\n');
   return `---
 layout: home
 hero:
@@ -334,18 +382,90 @@ hero:
       text: 查看路线图
       link: /roadmap
 features:
-  - title: PostgreSQL 作为入口
-    details: 先建立数据组织、约束、事务、查询和单机边界的直觉。
-  - title: 大数据系统演化
-    details: 从 SQL、数仓、ETL/CDC、批处理、实时、OLAP 到湖仓。
-  - title: AI 数据基础设施
-    details: 把向量数据库、图数据库、RAG、GraphRAG 和治理纳入统一架构。
+  - title: 不是 SQL 语法手册
+    details: 每章从真实问题进入，解释机制、边界、系统位置和实践任务。
+  - title: 不是工具清单
+    details: 按 PostgreSQL、SQL、数仓、批流、OLAP、湖仓、AI 数据系统的演化顺序组织。
+  - title: 面向长期能力
+    details: 目标是让读者从会查数据，走向能设计和评估智能数据基础设施。
 ---
 
-## 阅读路径
+## 这份大文档怎么读
 
-${list}
+这不是按工具热度排列的教程，而是一条系统演化路线。读者先用 PostgreSQL 建立数据库直觉，再用 SQL 建立分析表达能力，然后理解业务库为什么会分化出数仓、ETL/CDC、批处理、实时计算、OLAP 数据库和湖仓，最后进入向量、图和治理这些 AI 时代的数据基础设施主题。
+
+每章都按同一套阅读结构展开：问题切入、核心判断、机制解释、系统位置、场景案例、常见误区、实战任务、下一章衔接。这样读者不是背概念，而是在训练系统判断。
+
+## 分阶段阅读路径
+
+${partSections}
 `;
+}
+
+function createCatalog() {
+  const rows = chapters
+    .map((chapter) => `| [${chapter.chapter}. ${chapter.title}](${linkFor(chapter)}) | ${chapter.summary} |`)
+    .join('\n');
+  const parts = learningParts
+    .map((part) => `- **${part.title}**：${part.promise}`)
+    .join('\n');
+  return `# 全书目录
+
+## 全书分部
+
+${parts}
+
+## 章节清单
+
+| 章节 | 阅读目标 |
+| --- | --- |
+${rows}
+
+## 阅读建议
+
+如果你已经会写基础 SQL，但不理解数据平台，可以从第 3 章开始，先补齐大表、执行计划和单机边界，再进入第 4 章 OLTP / OLAP 分化。
+
+如果你正在做 AI 应用或 RAG，不建议直接跳到向量数据库。至少先读第 5-6 章，理解数据建模、同步、质量和血缘，否则向量检索很容易变成不可治理的临时索引。
+
+如果你想形成工程作品集，先通读第 14 章项目实战，再回到相关章节补机制。项目不是展示工具安装，而是展示数据从业务库进入分析系统、实时系统、AI 检索和治理系统的完整链路。
+`;
+}
+
+function createBookPage() {
+  const sections = [];
+
+  sections.push(`# 数据库全书：从 PostgreSQL 到智能数据系统
+
+这是一份连续阅读版大文档，把全书 18 个章节按学习路径串在同一个页面中。它适合从头到尾建立完整知识框架；如果需要查找单章、复制链接或使用本页目录跳转，可以回到 [全书目录](/catalog) 或左侧章节导航。
+
+## 阅读方式
+
+- 先看每一部分开头的定位，理解这一组章节解决什么阶段的问题。
+- 每章都按“问题切入、核心判断、机制解释、系统位置、场景案例、常见误区、实战任务、小结引出下一章”阅读。
+- 遇到工具名时，不先背定义，先问它解决什么问题、不解决什么问题、为什么在这个阶段出现。
+`);
+
+  for (const part of learningParts) {
+    sections.push(`## ${part.title}
+
+${part.promise}
+`);
+
+    const partChapters = chapters.filter((chapter) => chapter.chapter >= part.range[0] && chapter.chapter <= part.range[1]);
+    for (const chapter of partChapters) {
+      const source = stripH1(read(chapter.source)).trim();
+      sections.push(`## ${chapter.chapter}. ${chapter.title}
+
+::: tip 本章导读
+${chapter.summary}
+:::
+
+${source}
+`);
+    }
+  }
+
+  return sections.join('\n\n');
 }
 
 function createRoadmap() {
@@ -389,6 +509,7 @@ function createGlossary() {
 
 ## PostgreSQL 基础
 
+- **PostgreSQL**：本书建立数据库直觉的主入口，承担业务数据组织、事务一致性、SQL 查询和中小规模分析的基础训练。
 - **Database**：一个相对独立的数据世界。
 - **Schema**：数据库内部的命名空间。
 - **Table**：业务对象、事件或关系的数据化表达。
@@ -612,6 +733,8 @@ export default defineConfig({
     logo: '/images/logo.svg',
     nav: [
       { text: '开始阅读', link: '/chapters/00-positioning' },
+      { text: '完整大文档', link: '/book' },
+      { text: '全书目录', link: '/catalog' },
       { text: '路线图', link: '/roadmap' },
       { text: '术语表', link: '/glossary' },
       { text: 'SQL 实验室', link: '/sql-lab' },
@@ -626,6 +749,8 @@ export default defineConfig({
         text: '辅助阅读',
         items: [
           { text: '学习路线图', link: '/roadmap' },
+          { text: '完整大文档', link: '/book' },
+          { text: '全书目录', link: '/catalog' },
           { text: '术语表', link: '/glossary' },
           { text: 'SQL 实验室', link: '/sql-lab' },
           { text: '项目实战总览', link: '/projects' },
@@ -729,11 +854,43 @@ function createCss() {
 }
 
 .VPDoc .content {
-  max-width: 900px;
+  max-width: 920px;
 }
 
 .vp-doc p {
   line-height: 1.9;
+  margin: 14px 0;
+}
+
+.vp-doc h2 {
+  margin-top: 44px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.vp-doc h3 {
+  margin-top: 32px;
+}
+
+.vp-doc table {
+  display: table;
+  width: 100%;
+  font-size: 14px;
+}
+
+.vp-doc th,
+.vp-doc td {
+  vertical-align: top;
+}
+
+.vp-doc li + li {
+  margin-top: 6px;
+}
+
+.vp-doc img {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  background: var(--vp-c-bg-soft);
 }
 
 .vp-doc blockquote {
@@ -741,6 +898,40 @@ function createCss() {
   background: color-mix(in srgb, var(--vp-c-brand-1) 8%, transparent);
   padding: 12px 16px;
   border-radius: 8px;
+}
+
+.VPHome .VPFeature {
+  border-radius: 8px;
+}
+
+@media print {
+  .VPNav,
+  .VPLocalNav,
+  .VPSidebar,
+  .VPDocFooter,
+  .VPDocAside {
+    display: none !important;
+  }
+
+  .VPContent,
+  .VPDoc,
+  .VPDoc .container,
+  .VPDoc .content,
+  .vp-doc {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .vp-doc h1,
+  .vp-doc h2 {
+    break-after: avoid;
+  }
+
+  .vp-doc pre,
+  .vp-doc table,
+  .mermaid-block {
+    break-inside: avoid;
+  }
 }
 
 .mermaid-block {
@@ -821,6 +1012,8 @@ ensureDir(path.join(siteDir, '.vitepress', 'theme'));
 ensureDir(path.join(siteDir, 'public', 'images'));
 
 write(path.join(siteDir, 'index.md'), createIndex());
+write(path.join(siteDir, 'book.md'), createBookPage());
+write(path.join(siteDir, 'catalog.md'), createCatalog());
 write(path.join(siteDir, 'roadmap.md'), createRoadmap());
 write(path.join(siteDir, 'glossary.md'), createGlossary());
 write(path.join(siteDir, 'projects.md'), createProjects());

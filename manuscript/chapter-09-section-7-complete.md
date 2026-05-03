@@ -1,0 +1,617 @@
+### 9.7 OLAP性能调优
+
+前面学习了OLAP高可用架构，了解了如何设计高可用和容灾系统。
+
+OLAP数据库如何进一步优化性能？如何充分发挥硬件能力？如何调优系统参数？如何达到最佳性能？
+
+**场景**：
+```yaml
+性能优化需求：
+
+数据工程师："查询还是慢"
+
+架构师："需要深度优化"
+
+DBA："系统调优"
+```
+
+**问题**：
+- OLAP性能有哪些优化方向？
+- 如何调优系统配置？
+- 如何优化硬件使用？
+- 如何调优查询SQL？
+- 如何进行基准测试？
+
+**答案**：**OLAP性能调优需要从硬件、配置、SQL、架构四个层面入手，通过优化内存管理、并发控制、文件系统、网络参数等系统配置，结合SQL优化和架构调整，充分发挥硬件性能，达到最佳查询性能**
+
+---
+
+## 硬件性能优化
+
+### CPU优化
+
+```yaml
+CPU亲和性：
+- 绑定进程到固定CPU核心
+- 减少上下文切换
+- 提高缓存命中率
+
+CPU频率：
+- 关闭节能模式
+- 固定最高频率
+- 性能模式
+
+CPU隔离：
+- 隔离CPU核心给OLAP
+- 避免其他进程干扰
+- 专用CPU
+```
+
+**CPU亲和性配置**：
+```bash
+# 查看CPU核心
+cat /proc/cpuinfo | grep processor
+
+# 配置CPU亲和性
+# taskset -c 0-7 clickhouse-server --config-file=/etc/clickhouse-server/config.xml
+
+# systemctl配置
+cat > /etc/systemd/system/clickhouse-server.service.d/cpu-affinity.conf <<EOF
+[Service]
+CPUAffinity=0-7
+EOF
+
+systemctl daemon-reload
+systemctl restart clickhouse-server
+```
+
+### 内存优化
+
+```yaml
+内存分配：
+- 预分配内存
+- 避免动态分配
+- 减少内存碎片
+
+大页内存：
+- 使用Huge Page
+- 减少TLB Miss
+- 提高性能
+
+Swap配置：
+- 禁用Swap
+- 或设置swappiness=0
+- 避免内存交换
+```
+
+**内存优化配置**：
+```bash
+# 1. 配置Huge Page
+# 查看当前配置
+cat /proc/meminfo | grep Huge
+
+# 配置Huge Page
+echo 1500 > /proc/sys/vm/nr_hugepages
+
+# 永久配置
+cat >> /etc/sysctl.conf <<EOF
+vm.nr_hugepages = 1500
+vm.hugetlb_shm_group = 1001
+EOF
+
+# 2. 禁用Swap
+swapoff -a
+# 注释/etc/fstab中的swap行
+
+# 3. 调整swappiness
+sysctl vm.swappiness=0
+# 永久配置
+echo "vm.swappiness=0" >> /etc/sysctl.conf
+```
+
+**ClickHouse内存配置**：
+```xml
+<!-- config.xml -->
+<clickhouse>
+    <max_memory_usage>10000000000</max_memory_usage>  <!-- 10GB -->
+    <max_bytes_before_external_sort>5000000000</max_bytes_before_external_sort>  <!-- 5GB -->
+    <max_bytes_before_external_group_by>5000000000</max_bytes_before_external_group_by>  <!-- 5GB -->
+    
+    <memory_overcommit_ratio_denominator>10</memory_overcommit_ratio_denominator>
+</clickhouse>
+```
+
+### 磁盘优化
+
+```yaml
+存储类型选择：
+SSD（推荐）：
+- 随机读写快
+- 适合热数据
+- 成本较高
+
+HDD：
+- 顺序读写快
+- 适合冷数据
+- 成本较低
+
+NVMe：
+- 性能最强
+- 延迟最低
+- 成本最高
+
+文件系统：
+- ext4：稳定
+- xfs：大文件
+- zfs：高级特性
+```
+
+**磁盘优化配置**：
+```bash
+# 1. 挂载参数优化
+cat >> /etc/fstab <<EOF
+/dev/sdb1 /data/clickhouse ext4 defaults,noatime,nodiratime,data=writeback,barrier=0 0 0
+EOF
+
+# 参数说明：
+# noatime：不记录访问时间
+# nodiratime：不记录目录访问时间
+# data=writeback：写回模式
+# barrier=0：关闭barrier
+
+# 2. IO调度算法
+# 查看当前调度算法
+cat /sys/block/sda/queue/scheduler
+
+# SSD用noop或deadline
+echo noop > /sys/block/sda/queue/scheduler
+
+# 永久配置
+echo "echo noop > /sys/block/sda/queue/scheduler" >> /etc/rc.local
+
+# 3. 块设备预读
+# 查看当前预读大小
+blockdev --getra /dev/sda
+
+# 设置为256KB
+blockdev --setra 256 /dev/sda
+
+# 永久配置
+echo "ACTION==\"add|change\", KERNEL==\"sd[a-z]\", ATTR{bdi/read_ahead_kb}=\"256\"" > /etc/udev/rules.d/60-sda.rules
+```
+
+### 网络优化
+
+```yaml
+网络参数：
+- 增加TCP缓冲区
+- 调整TCP超时
+- 开启TCP窗口缩放
+
+网卡配置：
+- MTU设置
+- 中断合并
+- 多队列
+
+连接优化：
+- 连接复用
+- 连接池
+- 长连接
+```
+
+**网络优化配置**：
+```bash
+# 1. TCP参数优化
+cat >> /etc/sysctl.conf <<EOF
+# TCP缓冲区
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+
+# TCP超时
+net.ipv4.tcp_keepalive_time = 600
+net.ipv4.tcp_keepalive_intvl = 30
+net.ipv4.tcp_keepalive_probes = 3
+
+# TCP窗口缩放
+net.ipv4.tcp_window_scaling = 1
+
+# TIME_WAIT优化
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_fin_timeout = 30
+EOF
+
+sysctl -p
+
+# 2. 网卡多队列
+# 查看当前队列数
+ethtool -l eth0
+
+# 设置多队列
+ethtool -L eth0 combined 8
+```
+
+## 系统配置优化
+
+### ClickHouse配置
+
+```xml
+<!-- config.xml -->
+<clickhouse>
+    <!-- 内存配置 -->
+    <max_memory_usage>10000000000</max_memory_usage>
+    <max_bytes_before_external_sort>5000000000</max_bytes_before_external_sort>
+    
+    <!-- 并发配置 -->
+    <max_concurrent_queries>100</max_concurrent_queries>
+    <max_concurrent_insert_queries>10</max_concurrent_insert_queries>
+    
+    <!-- 线程配置 -->
+    <background_pool_size>16</background_pool_size>
+    <background_schedule_pool_size>16</background_schedule_pool_size>
+    <max_thread_size>16</max_thread_size>
+    
+    <!-- 合并配置 -->
+    <number_of_free_entries_in_pool_to_lower_max_size_of_merge>8</number_of_free_entries_in_pool_to_lower_max_size_of_merge>
+    <max_bytes_to_merge_at_max_space_in_pool>10737418240</max_bytes_to_merge_at_max_space_in_pool>
+    
+    <!-- 查询配置 -->
+    <max_insert_block_size>1048576</max_insert_block_size>
+    <min_insert_block_size_rows>1048576</min_insert_block_size_rows>
+    <min_insert_block_size_bytes>268435456</min_insert_block_size_bytes>
+    
+    <!-- Mark缓存 -->
+    <mark_cache_size>5368709120</mark_cache_size>
+    
+    <!-- Uncompressed缓存 -->
+    <uncompressed_cache_size>8589934592</uncompressed_cache_size>
+</clickhouse>
+```
+
+### Doris配置
+
+```sql
+-- FE配置
+SET GLOBAL max_conn = 1000;
+SET GLOBAL query_timeout = 300;
+SET GLOBAL exec_mem_limit = 8589934592;
+
+-- BE配置
+-- be.conf
+mem_limit=80%
+default_num_columns=40
+max_compaction_threads=4
+max_tablet_version_num=1000
+storage_flood_stage_usage_percent=95
+storage_flood_stage_left_capacity_bytes=107374182400
+```
+
+## 查询性能调优
+
+### 使用Prepared Statement
+
+```sql
+-- 不好的做法：每次拼接SQL
+-- SQL无法复用，每次重新解析
+String query = "SELECT * FROM sales WHERE customer_id = " + customerId;
+Statement stmt = connection.createStatement();
+ResultSet rs = stmt.executeQuery(query);
+
+-- 好的做法：使用PreparedStatement
+-- SQL预编译，可以复用
+String query = "SELECT * FROM sales WHERE customer_id = ?";
+PreparedStatement pstmt = connection.prepareStatement(query);
+pstmt.setInt(1, customerId);
+ResultSet rs = pstmt.executeQuery();
+
+-- 性能提升：10-20%
+```
+
+### 分批处理大查询
+
+```sql
+-- 不好的做法：一次性处理所有数据
+SELECT * FROM sales_wide;
+-- 可能返回数亿行，内存溢出
+
+-- 好的做法：分批处理
+-- 第一批
+SELECT * FROM sales_wide
+WHERE sale_time >= '2025-01-01' AND sale_time < '2025-02-01';
+
+-- 第二批
+SELECT * FROM sales_wide
+WHERE sale_time >= '2025-02-01' AND sale_time < '2025-03-01';
+
+-- 优势：
+-- 1. 内存可控
+-- 2. 失败可重试
+-- 3. 并行处理
+```
+
+### 使用CTE优化
+
+```sql
+-- 不好的做法：重复计算
+SELECT 
+    category,
+    SUM(amount) / (SELECT SUM(amount) FROM sales) AS ratio
+FROM sales
+GROUP BY category;
+
+-- 好的做法：使用CTE
+WITH total AS (
+    SELECT SUM(amount) AS total_amount
+    FROM sales
+)
+SELECT 
+    category,
+    SUM(s.amount) / t.total_amount AS ratio
+FROM sales s, total t
+GROUP BY category;
+
+-- 优势：
+-- 1. 只计算一次
+-- 2. 可读性好
+-- 3. 性能更好
+```
+
+### 使用物化视图
+
+```sql
+-- 创建物化视图
+CREATE MATERIALIZED VIEW mv_daily_sales AS
+SELECT 
+    DATE(sale_time) AS sale_date,
+    category,
+    SUM(amount) AS total_amount,
+    COUNT(*) AS order_count
+FROM sales_wide
+GROUP BY sale_date, category;
+
+-- 查询直接用物化视图
+SELECT * FROM mv_daily_sales
+WHERE sale_date >= '2025-01-01';
+-- 查询时间：分钟级 → 秒级
+
+-- 定期刷新物化视图
+REFRESH MATERIALIZED VIEW mv_daily_sales;
+```
+
+## 索引优化
+
+### 主键优化
+
+```sql
+-- 主键设计原则
+-- 1. 查询条件中的列
+-- 2. 高基数的列
+-- 3. 按顺序排列
+
+-- 不好的主键
+CREATE TABLE events_bad (
+    event_time Timestamp,
+    event_type String,
+    user_id UInt64
+) ENGINE = MergeTree()
+ORDER BY event_type;  -- 低基数，过滤效果差
+
+-- 好的主键
+CREATE TABLE events_good (
+    event_time Timestamp,
+    event_type String,
+    user_id UInt64
+) ENGINE = MergeTree()
+ORDER BY (event_time, event_type, user_id);  -- 高基数，过滤效果好
+```
+
+### 二级索引优化
+
+```sql
+-- 创建Bitmap索引（适合低基数）
+CREATE INDEX idx_category ON sales(category) USING BITMAP COMMENT '类别索引';
+
+-- 创建Bloom Filter索引
+CREATE INDEX idx_user_id ON sales(user_id) USING BLOOMFILTER COMMENT '用户ID索引';
+
+-- 查看索引使用情况
+EXPLAIN 
+SELECT * FROM sales
+WHERE category = 'Electronics' AND user_id = 12345;
+```
+
+### 跳数索引
+
+```sql
+-- ClickHouse跳数索引
+CREATE TABLE events (
+    event_time Timestamp,
+    event_type String,
+    user_id UInt64
+) ENGINE = MergeTree()
+ORDER BY (event_time, event_type)
+SETTINGS index_granularity = 8192
+SETTINGS
+    index_granularity_bytes = 10485760;
+
+-- 添加minmax索引
+ALTER TABLE events 
+ADD INDEX idx_event_time_minmax event_time TYPE minmax GRANULARITY 4;
+
+-- 添加set索引
+ALTER TABLE events 
+ADD INDEX idx_event_type_set event_type TYPE set(100) GRANULARITY 4;
+
+-- 查看索引效果
+SELECT 
+    name,
+    type,
+    expr
+FROM system.data_skipping_indices
+WHERE table = 'events';
+```
+
+## 并发优化
+
+### 并发度配置
+
+```sql
+-- 查看当前配置
+SHOW VARIABLES LIKE '%parallel%';
+
+-- 调整并发度
+SET parallel_fragment_exec_instance_num = 8;
+
+-- 全局配置
+SET GLOBAL parallel_fragment_exec_instance_num = 8;
+```
+
+### 线程池优化
+
+```yaml
+线程池配置原则：
+- 线程数 = CPU核心数 × 2
+- 过多：上下文切换开销
+- 过少：CPU利用率低
+
+连接池：
+- 最小连接：CPU核心数
+- 最大连接：CPU核心数 × 2
+- 空闲超时：30分钟
+```
+
+**线程池配置**：
+```xml
+<!-- ClickHouse线程池 -->
+<clickhouse>
+    <background_pool_size>16</background_pool_size>
+    <background_schedule_pool_size>16</background_schedule_pool_size>
+    <max_thread_size>16</max_thread_size>
+</clickhouse>
+```
+
+## 性能测试与基准
+
+### 基准测试
+
+```sql
+-- 测试1：简单查询
+SELECT COUNT(*) FROM sales_wide;
+
+-- 测试2：聚合查询
+SELECT category, SUM(amount) 
+FROM sales_wide
+WHERE sale_time >= '2025-01-01'
+GROUP BY category;
+
+-- 测试3：JOIN查询
+SELECT s.category, c.city, SUM(s.amount)
+FROM sales_wide s
+JOIN customer_wide c ON s.customer_id = c.customer_id
+GROUP BY s.category, c.city;
+
+-- 测试4：复杂查询
+SELECT 
+    DATE(sale_time) AS sale_date,
+    category,
+    brand,
+    SUM(amount) AS total_amount,
+    COUNT(*) AS order_count
+FROM sales_wide
+WHERE sale_time >= '2025-01-01'
+GROUP BY sale_date, category, brand;
+```
+
+### 性能指标
+
+```yaml
+查询延迟：
+- P50 < 1s
+- P95 < 5s
+- P99 < 10s
+
+吞吐量：
+- QPS > 100
+- 导入速率 > 100MB/s
+
+资源使用：
+- CPU < 70%
+- 内存 < 80%
+- 磁盘IO < 70%
+```
+
+### 性能分析工具
+
+```sql
+-- 1. 查看查询执行计划
+EXPLAIN VERBOSE SELECT ...;
+
+-- 2. 查看查询统计
+SELECT 
+    query,
+    query_duration_ms,
+    memory_usage,
+    read_rows,
+    read_bytes
+FROM system.query_log
+WHERE type = 'QueryFinish'
+ORDER BY query_duration_ms DESC
+LIMIT 10;
+
+-- 3. 查看表统计
+SELECT 
+    database,
+    table,
+    formatReadableSize(sum(bytes)) AS size,
+    sum(rows) AS rows
+FROM system.parts
+WHERE active
+GROUP BY database, table
+ORDER BY size DESC;
+```
+
+## 总结
+
+**OLAP性能调优核心要点**：
+1. **硬件优化**：CPU、内存、磁盘、网络
+2. **系统配置**：参数调优、线程配置
+3. **SQL优化**：查询写法、物化视图
+4. **索引优化**：主键、二级索引、跳数索引
+5. **并发优化**：并发度、线程池
+6. **性能测试**：基准测试、性能分析
+
+**调优路径**：
+1. 监控性能瓶颈
+2. 分析瓶颈原因
+3. 制定优化方案
+4. 实施优化
+5. 验证效果
+6. 持续优化
+
+**调优检查清单**：
+```yaml
+硬件层：
+□ CPU亲和性
+□ 大页内存
+□ 磁盘挂载参数
+□ 网络参数
+
+系统层：
+□ 内存配置
+□ 并发配置
+□ 线程配置
+□ 缓存配置
+
+应用层：
+□ SQL优化
+□ 索引优化
+□ 物化视图
+□ 查询缓存
+
+验证：
+□ 基准测试
+□ 性能对比
+□ 压力测试
+□ 长期监控
+```

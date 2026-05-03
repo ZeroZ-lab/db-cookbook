@@ -961,6 +961,8 @@ CREATE INDEX idx_orders_user_created
 ON orders (user_id, created_at DESC);
 ```
 
+PostgreSQL 默认创建的是 B-tree 索引，它适合最常见的等值、范围和排序访问路径。其他索引类型要通过 `USING` 显式选择，例如 Hash 主要服务简单等值比较，GIN 常用于数组、JSONB、全文检索这类多值结构，GiST / SP-GiST 常用于几何、范围、近邻等需要特定 operator class 的场景，BRIN 适合与物理存储顺序高度相关的大表列。
+
 索引的核心判断是：
 
 > 索引不是让所有查询都变快，而是用额外存储和写入维护成本，换取特定访问路径上的更少读取。

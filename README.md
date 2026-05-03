@@ -45,9 +45,15 @@ PostgreSQL 业务数据
 - [章节模板](docs/chapter-template.md)
 - [书稿扩写与验收计划](docs/book-expansion-plan.md)
 - [完成审计](docs/completion-audit.md)
+- [目标覆盖映射](docs/objective-coverage-map.md)
 - [事实核查矩阵](docs/fact-check-matrix.md)
+- [事实核查证据台账](docs/fact-check-evidence.md)
+- [事实核查结构化 register](docs/fact-check-register.json)
+- [事实核查逐条记录](docs/fact-check-records/FC-001.md)
 - [来源笔记](docs/source-notes.md)
 - [技术编辑审核记录](docs/editorial-review.md)
+- [项目实战工作台](project-workbench/README.md)
+- [项目实战状态 manifest](project-workbench/project-manifest.json)
 
 ## 正文书稿
 
@@ -77,7 +83,15 @@ PostgreSQL 业务数据
 - 源文件目录：`site/`
 - 生成脚本：[scripts/generate-site.mjs](scripts/generate-site.mjs)
 - 章节结构验证：`node scripts/verify-book-structure.mjs`
+- 写作契约验证：`node scripts/verify-writing-contract.mjs`
+- 正文深度验证：`node scripts/verify-manuscript-depth.mjs`
+- 术语一致性验证：`node scripts/verify-terminology.mjs`
+- 编辑质量残留验证：`node scripts/verify-editorial-quality.mjs`
 - SQL 样例静态验证：`node scripts/verify-sql-examples.mjs`
+- 项目实战 manifest 与骨架验证：`node scripts/verify-project-workbench.mjs`
+- 事实核查矩阵验证：`node scripts/verify-fact-check-matrix.mjs`
+- 事实核查记录生成：`pnpm facts:generate-records`
+- 完成审计边界验证：`node scripts/verify-completion-audit.mjs`
 - PostgreSQL 样例运行：`pnpm sql:run`
 - 本地开发：`pnpm docs:dev`
 - 构建验证：`pnpm docs:build`

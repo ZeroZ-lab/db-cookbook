@@ -1,0 +1,23 @@
+[
+  {
+    "question": "订单 GMV 指标应该使用哪个时间字段？",
+    "expected_source_uri": "docs/metrics/gmv.md",
+    "expected_answer": "支付口径 GMV 应优先使用 paid_at，并过滤支付成功和有效订单状态。",
+    "required_access_scope": "analytics",
+    "checks": ["source_hit", "answer_contains_paid_at", "permission_allowed"]
+  },
+  {
+    "question": "为什么向量检索不能替代权限系统？",
+    "expected_source_uri": "docs/security/rag-permission.md",
+    "expected_answer": "向量检索只负责相似度召回，权限过滤必须在召回前后都被校验。",
+    "required_access_scope": "security",
+    "checks": ["source_hit", "answer_mentions_permission_filter", "permission_allowed"]
+  },
+  {
+    "question": "embedding 模型版本变化后为什么要重新评测？",
+    "expected_source_uri": "docs/rag/embedding-version.md",
+    "expected_answer": "模型版本变化会改变向量空间和相似度排序，需要重新生成 embedding 或建立兼容策略。",
+    "required_access_scope": "rag",
+    "checks": ["source_hit", "answer_mentions_version", "permission_allowed"]
+  }
+]

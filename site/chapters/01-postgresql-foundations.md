@@ -13,6 +13,16 @@ next: { text: "2. SQL 分析能力：大数据方向第一硬技能", link: "/ch
 ![数据库基础：用 PostgreSQL 建立数据系统直觉](/images/chapter-01.svg)
 
 
+## 本章阅读框架
+
+| 阅读问题 | 本章回答方式 |
+| --- | --- |
+| 这个问题为什么出现？ | 从业务增长、数据规模、系统目标或 AI 应用压力切入。 |
+| 它解决什么问题？ | 提炼为一个核心判断，避免把概念写成孤立定义。 |
+| 它不解决什么问题？ | 在机制解释和常见误区中说明边界，防止工具崇拜。 |
+| 它在真实平台哪里出现？ | 放回 PostgreSQL、数仓、批流、OLAP、湖仓、向量、图和治理的演化链路。 |
+| 读完要会做什么？ | 通过场景案例和实战任务转成可练习的判断。 |
+
 ```mermaid
 flowchart TB
   S["PostgreSQL Server"] --> D["Database"]
@@ -982,6 +992,8 @@ ORDER BY created_at DESC;
 CREATE INDEX idx_orders_user_created
 ON orders (user_id, created_at DESC);
 ```
+
+PostgreSQL 默认创建的是 B-tree 索引，它适合最常见的等值、范围和排序访问路径。其他索引类型要通过 `USING` 显式选择，例如 Hash 主要服务简单等值比较，GIN 常用于数组、JSONB、全文检索这类多值结构，GiST / SP-GiST 常用于几何、范围、近邻等需要特定 operator class 的场景，BRIN 适合与物理存储顺序高度相关的大表列。
 
 索引的核心判断是：
 

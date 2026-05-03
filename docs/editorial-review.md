@@ -79,9 +79,17 @@
 
 - `node scripts/generate-site.mjs` 成功，已从 `manuscript/` 生成 18 个 `site/chapters/` 页面。
 - `node scripts/verify-book-structure.mjs` 成功，已确认 0-17 章全部包含八段结构。
+- `node scripts/verify-writing-contract.mjs` 成功，已确认 0-17 章都覆盖“解决什么、不解决什么、为什么出现、前后关系、真实平台落地、可验证任务”的写作契约信号。
+- `node scripts/verify-manuscript-depth.mjs` 成功，已确认 0-17 章达到最低正文字符量、三级结构和表格化检查/对比内容门槛。
+- `node scripts/verify-terminology.mjs` 成功，已确认核心术语在术语表中定义，并在对应章节中出现。
+- `node scripts/verify-editorial-quality.mjs` 成功，已确认正式章节没有自动扩写标记、已知泛化残留句或孤立 `|` 表格残留。
 - `node scripts/verify-sql-examples.mjs` 成功，已确认第 2 章 SQL 样例引用的表、字段和章节段落与样例 schema 一致。
+- `node scripts/verify-project-workbench.mjs` 成功，已确认 `project-workbench/project-manifest.json` 记录七个项目的阶段、必需产物、运行状态和阻塞项，且第 14 章七个项目都有固定项目骨架、验收字段和 `DELIVERABLES.md` 交付清单；项目 1 已有独立运行入口、PostgreSQL 17 Docker Compose 和运行记录模板；项目 2 已有 ClickHouse 字段映射、MergeTree DDL、GMV 查询和对账模板；项目 3 已有 CDC 事件、Kafka Topic、Flink SQL、Sink DDL 和 Exactly Once 边界说明；项目 4 已有对象存储布局、Iceberg DDL、Trino 查询、Spark 转换和演化记录；项目 5 已有 pgvector schema、权限过滤检索、RAG 评测集、Chunk 策略和检索日志模板；项目 6 已有 ontology、三元组、Neo4j/NebulaGraph 查询、GraphRAG 上下文和图查询日志；项目 7 已有治理 schema、指标字典、血缘、质量规则、权限策略和审计模板。
+- `pnpm facts:generate-records` 成功，已从结构化 register 生成 18 个逐条事实核查记录文件。
+- `node scripts/verify-fact-check-matrix.mjs` 成功，已确认事实核查矩阵包含 18 条 FC 项，结构化 register 包含 18 个来源和章节映射，`docs/fact-check-records/` 包含 18 个逐条处理记录文件，证据台账包含 18 个对应入口，且没有无证据完成声明。
+- `node scripts/verify-completion-audit.mjs` 成功，已确认完成审计和目标覆盖映射没有把真实运行、事实核查、完整可运行项目或出版定稿误标为完成。
 - `pnpm docs:build` 成功，`site/.vitepress/dist/` 已生成。此前 Rollup 原生 darwin arm64 包被当前 macOS / Node 进程代码签名校验拦截，已通过项目内 `@rollup/wasm-node` 替换解决。
-- `bash -n scripts/run-postgres-examples.sh` 成功，PostgreSQL 样例运行脚本语法有效；当前环境仍缺少 `psql` / `createdb`，因此尚未完成真实数据库执行。
+- `bash -n scripts/run-postgres-examples.sh` 成功，PostgreSQL 样例运行脚本语法有效；项目 1 运行入口实际探测时 `sql:verify` 成功，但当前环境缺少 PostgreSQL 客户端，因此尚未完成真实数据库执行；项目 1 已提供 PostgreSQL 17 Docker Compose 运行路径。
 - 第 0-17 章已显式补齐“问题切入、核心判断、机制解释、系统位置、场景案例、常见误区、实战任务、小结引出下一章”八段结构。
 
 ## 下一轮建议
@@ -90,6 +98,6 @@
 
 1. 先精修第 0-5 章，作为全书样章标准。
 2. 为第 0-5 章补 5 张高质量 SVG/AI 视觉图。
-3. 为 SQL 示例补一套可运行电商样例数据。
+3. 为 SQL 示例补真实 PostgreSQL 运行记录。
 4. 再按同样标准推进第 6-13 章。
 5. 最后统一术语、引用、图表编号和上线部署。

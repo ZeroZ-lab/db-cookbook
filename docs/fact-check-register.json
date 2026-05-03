@@ -1,0 +1,339 @@
+{
+  "schemaVersion": 1,
+  "statusContract": {
+    "allowedStatuses": [
+      "initial-checked-needs-chapter-record",
+      "pending-chapter-check",
+      "partial-initial-check"
+    ],
+    "forbiddenCompletionClaims": [
+      "verified",
+      "complete",
+      "all-officially-checked",
+      "no-change-needed"
+    ]
+  },
+  "items": [
+    {
+      "id": "FC-001",
+      "topic": "PostgreSQL 分区",
+      "chapters": [
+        "第 1 章",
+        "第 3 章"
+      ],
+      "chapterFiles": [
+        "manuscript/part-01-postgresql-foundations/chapter-01.md",
+        "manuscript/chapter-03-postgresql-large-tables.md"
+      ],
+      "sourceUrls": [
+        "https://www.postgresql.org/docs/17/ddl-partitioning.html"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-002",
+      "topic": "PostgreSQL 物化视图",
+      "chapters": [
+        "第 1 章",
+        "第 3 章"
+      ],
+      "chapterFiles": [
+        "manuscript/part-01-postgresql-foundations/chapter-01.md",
+        "manuscript/chapter-03-postgresql-large-tables.md"
+      ],
+      "sourceUrls": [
+        "https://www.postgresql.org/docs/17/sql-creatematerializedview.html"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-003",
+      "topic": "PostgreSQL 索引",
+      "chapters": [
+        "第 1 章",
+        "第 3 章"
+      ],
+      "chapterFiles": [
+        "manuscript/part-01-postgresql-foundations/chapter-01.md",
+        "manuscript/chapter-03-postgresql-large-tables.md"
+      ],
+      "sourceUrls": [
+        "https://www.postgresql.org/docs/17/indexes-types.html"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-004",
+      "topic": "PostgreSQL WAL / Logical Decoding",
+      "chapters": [
+        "第 1 章",
+        "第 6 章",
+        "第 8 章"
+      ],
+      "chapterFiles": [
+        "manuscript/part-01-postgresql-foundations/chapter-01.md",
+        "manuscript/chapter-06-etl-elt.md",
+        "manuscript/chapter-08-stream-processing.md"
+      ],
+      "sourceUrls": [
+        "https://www.postgresql.org/docs/17/wal-intro.html",
+        "https://www.postgresql.org/docs/17/logical-replication-architecture.html",
+        "https://www.postgresql.org/docs/17/logicaldecoding.html",
+        "https://www.postgresql.org/docs/17/logicaldecoding-explanation.html"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-005",
+      "topic": "Kafka",
+      "chapters": [
+        "第 6 章",
+        "第 8 章"
+      ],
+      "chapterFiles": [
+        "manuscript/chapter-06-etl-elt.md",
+        "manuscript/chapter-08-stream-processing.md"
+      ],
+      "sourceUrls": [
+        "https://kafka.apache.org/documentation/"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-006",
+      "topic": "Flink 时间语义",
+      "chapters": [
+        "第 8 章"
+      ],
+      "chapterFiles": [
+        "manuscript/chapter-08-stream-processing.md"
+      ],
+      "sourceUrls": [
+        "https://nightlies.apache.org/flink/flink-docs-release-1.19/docs/concepts/time/"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-007",
+      "topic": "Flink Checkpoint / Exactly Once",
+      "chapters": [
+        "第 6 章",
+        "第 8 章"
+      ],
+      "chapterFiles": [
+        "manuscript/chapter-06-etl-elt.md",
+        "manuscript/chapter-08-stream-processing.md"
+      ],
+      "sourceUrls": [
+        "https://nightlies.apache.org/flink/flink-docs-release-1.19/docs/dev/datastream/fault-tolerance/checkpointing/",
+        "https://nightlies.apache.org/flink/flink-docs-release-1.19/api/java/org/apache/flink/streaming/api/CheckpointingMode.html"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-008",
+      "topic": "ClickHouse MergeTree",
+      "chapters": [
+        "第 9 章"
+      ],
+      "chapterFiles": [
+        "manuscript/chapter-09-olap-databases.md"
+      ],
+      "sourceUrls": [
+        "https://clickhouse.com/docs/engines/table-engines/mergetree-family/mergetree"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-009",
+      "topic": "Apache Doris 表模型",
+      "chapters": [
+        "第 9 章"
+      ],
+      "chapterFiles": [
+        "manuscript/chapter-09-olap-databases.md"
+      ],
+      "sourceUrls": [
+        "https://doris.apache.org/docs/",
+        "https://doris.apache.org/docs/3.x/gettingStarted/what-is-apache-doris/",
+        "https://doris.apache.org/docs/3.x/table-design/data-model/overview/",
+        "https://doris.apache.org/docs/3.x/table-design/data-model/duplicate/",
+        "https://doris.apache.org/docs/3.x/table-design/data-model/unique/",
+        "https://doris.apache.org/docs/3.x/table-design/data-model/aggregate/"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-010",
+      "topic": "DuckDB",
+      "chapters": [
+        "第 9 章",
+        "第 12 章"
+      ],
+      "chapterFiles": [
+        "manuscript/chapter-09-olap-databases.md",
+        "manuscript/chapter-12-lakehouse.md"
+      ],
+      "sourceUrls": [
+        "https://duckdb.org/docs/",
+        "https://duckdb.org/docs/current/data/parquet/overview.html",
+        "https://duckdb.org/why_duckdb"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-011",
+      "topic": "Apache Iceberg",
+      "chapters": [
+        "第 12 章"
+      ],
+      "chapterFiles": [
+        "manuscript/chapter-12-lakehouse.md"
+      ],
+      "sourceUrls": [
+        "https://iceberg.apache.org/docs/latest/evolution/",
+        "https://iceberg.apache.org/spec/"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-012",
+      "topic": "Delta / Hudi",
+      "chapters": [
+        "第 12 章"
+      ],
+      "chapterFiles": [
+        "manuscript/chapter-12-lakehouse.md"
+      ],
+      "sourceUrls": [
+        "https://docs.delta.io/latest/index.html",
+        "https://docs.delta.io/latest/delta-batch.html",
+        "https://hudi.apache.org/docs/overview/",
+        "https://hudi.apache.org/docs/table_types/"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-013",
+      "topic": "pgvector",
+      "chapters": [
+        "第 10 章"
+      ],
+      "chapterFiles": [
+        "manuscript/chapter-10-vector-databases.md"
+      ],
+      "sourceUrls": [
+        "https://github.com/pgvector/pgvector"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-014",
+      "topic": "Milvus / Qdrant",
+      "chapters": [
+        "第 10 章"
+      ],
+      "chapterFiles": [
+        "manuscript/chapter-10-vector-databases.md"
+      ],
+      "sourceUrls": [
+        "https://milvus.io/docs",
+        "https://milvus.io/docs/overview.md",
+        "https://qdrant.tech/documentation/",
+        "https://qdrant.tech/documentation/search/filtering/",
+        "https://qdrant.tech/documentation/search/hybrid-queries/"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-015",
+      "topic": "向量索引",
+      "chapters": [
+        "第 10 章"
+      ],
+      "chapterFiles": [
+        "manuscript/chapter-10-vector-databases.md"
+      ],
+      "sourceUrls": [
+        "https://github.com/pgvector/pgvector",
+        "https://milvus.io/docs",
+        "https://milvus.io/docs/index.md",
+        "https://milvus.io/docs/index-vector-fields.md",
+        "https://qdrant.tech/documentation/",
+        "https://qdrant.tech/documentation/manage-data/indexing/",
+        "https://qdrant.tech/documentation/manage-data/quantization/"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-016",
+      "topic": "Neo4j / Cypher",
+      "chapters": [
+        "第 11 章"
+      ],
+      "chapterFiles": [
+        "manuscript/chapter-11-graph-databases.md"
+      ],
+      "sourceUrls": [
+        "https://neo4j.com/docs/",
+        "https://neo4j.com/docs/getting-started/graph-database/",
+        "https://neo4j.com/docs/cypher-manual/current/patterns/"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-017",
+      "topic": "NebulaGraph / 分布式图",
+      "chapters": [
+        "第 11 章"
+      ],
+      "chapterFiles": [
+        "manuscript/chapter-11-graph-databases.md"
+      ],
+      "sourceUrls": [
+        "https://docs.nebula-graph.io/",
+        "https://docs.nebula-graph.io/3.8.0/1.introduction/1.what-is-nebula-graph/",
+        "https://docs.nebula-graph.io/3.8.0/1.introduction/3.nebula-graph-architecture/1.architecture-overview/"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    },
+    {
+      "id": "FC-018",
+      "topic": "权限与 RAG / GraphRAG",
+      "chapters": [
+        "第 13 章"
+      ],
+      "chapterFiles": [
+        "manuscript/chapter-13-data-governance.md"
+      ],
+      "sourceUrls": [
+        "https://www.postgresql.org/docs/17/ddl-rowsecurity.html",
+        "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html",
+        "https://genai.owasp.org/llm-top-10/",
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-overview.html",
+        "https://qdrant.tech/documentation/search/filtering/",
+        "https://docs.nebula-graph.io/3.8.0/7.data-security/1.authentication/"
+      ],
+      "status": "initial-checked-needs-chapter-record",
+      "requiresChapterRecord": true
+    }
+  ]
+}

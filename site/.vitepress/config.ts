@@ -90,6 +90,8 @@ export default defineConfig({
     logo: '/images/logo.svg',
     nav: [
       { text: '开始阅读', link: '/chapters/00-positioning' },
+      { text: '完整大文档', link: '/book' },
+      { text: '全书目录', link: '/catalog' },
       { text: '路线图', link: '/roadmap' },
       { text: '术语表', link: '/glossary' },
       { text: 'SQL 实验室', link: '/sql-lab' },
@@ -104,6 +106,8 @@ export default defineConfig({
         text: '辅助阅读',
         items: [
           { text: '学习路线图', link: '/roadmap' },
+          { text: '完整大文档', link: '/book' },
+          { text: '全书目录', link: '/catalog' },
           { text: '术语表', link: '/glossary' },
           { text: 'SQL 实验室', link: '/sql-lab' },
           { text: '项目实战总览', link: '/projects' },

@@ -1,0 +1,22 @@
+CREATE SPACE IF NOT EXISTS db_cookbook_graph(vid_type=FIXED_STRING(64));
+
+USE db_cookbook_graph;
+
+CREATE TAG IF NOT EXISTS user(user_id int, name string, channel string);
+CREATE TAG IF NOT EXISTS product(product_id int, product_name string, category string);
+CREATE TAG IF NOT EXISTS metric(metric_name string, version string);
+CREATE TAG IF NOT EXISTS document(source_uri string, document_version string);
+
+CREATE EDGE IF NOT EXISTS placed(source string, confidence double);
+CREATE EDGE IF NOT EXISTS contains(source string, confidence double);
+CREATE EDGE IF NOT EXISTS defined_in(source string, confidence double);
+CREATE EDGE IF NOT EXISTS mentions(source string, confidence double);
+
+GO 2 STEPS FROM "user:501"
+OVER placed, contains
+YIELD dst(edge) AS related_vertex, properties(edge).source AS source;
+
+FIND ALL PATH FROM "metric:gmv" TO "product:8801"
+OVER defined_in, mentions
+UPTO 3 STEPS
+YIELD path AS graph_path;
