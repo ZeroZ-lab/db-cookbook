@@ -308,6 +308,58 @@ function stripH1(markdown) {
   return markdown.replace(/^# .+\n+/, '');
 }
 
+const STUB_THRESHOLD = 2000; // bytes — files below this are template stubs, not real content
+
+function readSections(chapterNum) {
+  const sectionDir = path.join(root, 'manuscript');
+  const padded = String(chapterNum).padStart(2, '0');
+  const sections = [];
+  for (let i = 1; i <= 20; i++) {
+    const file = path.join(sectionDir, `chapter-${padded}-section-${i}-complete.md`);
+    if (fs.existsSync(file)) {
+      let content = fs.readFileSync(file, 'utf8').trim();
+      if (Buffer.byteLength(content, 'utf8') <= STUB_THRESHOLD) continue;
+
+      // Section 1 often starts with the full chapter intro (# title, ## 问题切入, etc.)
+      // Strip everything before the first ### X.Y heading
+      if (i === 1) {
+        const lines = content.split('\n');
+        const firstH3 = lines.findIndex(line => /^### \d+\.\d+/.test(line));
+        if (firstH3 > 0) {
+          content = lines.slice(firstH3).join('\n').trim();
+        }
+      }
+
+      sections.push(content);
+    }
+  }
+  return sections;
+}
+
+function integrateSectionsInOverview(overviewContent, chapterNum) {
+  const sections = readSections(chapterNum);
+  if (sections.length === 0) return overviewContent;
+
+  const lines = overviewContent.split('\n');
+
+  // Find ## 机制解释 line
+  const mechIdx = lines.findIndex(line => line.startsWith('## 机制解释'));
+  if (mechIdx === -1) return overviewContent;
+
+  // Find the first ### heading AFTER ## 机制解释 (could be ### X.Y or ### 一、二...)
+  const firstSectionIdx = lines.findIndex((line, idx) => idx > mechIdx && line.startsWith('### '));
+  if (firstSectionIdx === -1) return overviewContent;
+
+  // Find ## 系统位置 line index (everything from here to end is closing)
+  const systemPosIdx = lines.findIndex(line => line.startsWith('## 系统位置'));
+  if (systemPosIdx === -1) return overviewContent;
+
+  const intro = lines.slice(0, firstSectionIdx).join('\n').trimEnd();
+  const closing = lines.slice(systemPosIdx).join('\n').trim();
+
+  return [intro, '', sections.join('\n\n'), '', closing].join('\n');
+}
+
 function frontmatter(chapter) {
   const prev = chapters[chapters.findIndex((item) => item.target === chapter.target) - 1];
   const next = chapters[chapters.findIndex((item) => item.target === chapter.target) + 1];
@@ -324,7 +376,8 @@ function frontmatter(chapter) {
 }
 
 function chapterPage(chapter) {
-  const source = stripH1(read(chapter.source)).trim();
+  const rawSource = stripH1(read(chapter.source)).trim();
+  const source = integrateSectionsInOverview(rawSource, chapter.chapter);
   const visualPath = chapter.chapter <= 5 ? `\n![${chapter.title}](/images/chapter-${String(chapter.chapter).padStart(2, '0')}.svg)\n` : '';
   return `${frontmatter(chapter)}# ${chapter.chapter}. ${chapter.title}
 
@@ -454,7 +507,8 @@ ${part.promise}
 
     const partChapters = chapters.filter((chapter) => chapter.chapter >= part.range[0] && chapter.chapter <= part.range[1]);
     for (const chapter of partChapters) {
-      const source = stripH1(read(chapter.source)).trim();
+      const rawSource = stripH1(read(chapter.source)).trim();
+      const source = integrateSectionsInOverview(rawSource, chapter.chapter);
       sections.push(`## ${chapter.chapter}. ${chapter.title}
 
 ::: tip 本章导读
