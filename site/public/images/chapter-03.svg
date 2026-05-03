@@ -1,0 +1,39 @@
+<svg width="960" height="360" viewBox="0 0 960 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0 0L8 4L0 8V0Z" fill="#2563EB"/>
+    </marker>
+  </defs>
+  <rect width="960" height="360" rx="28" fill="#F8FAFC"/>
+  <rect x="24" y="24" width="912" height="312" rx="24" fill="white" stroke="#E5E7EB"/>
+  <circle cx="82" cy="86" r="30" fill="#DBEAFE"/>
+  <path d="M70 86H94M82 74V98" stroke="#2563EB" stroke-width="5" stroke-linecap="round"/>
+  <text x="130" y="82" font-size="30" font-weight="800" fill="#111827">大表与单机边界</text>
+  <text x="130" y="116" font-size="17" fill="#64748B">用访问路径、预计算和分区理解分析压力</text>
+  <g>
+      <rect x="70" y="180" width="112" height="80" rx="16" fill="#EFF6FF" stroke="#93C5FD"/>
+      <text x="126" y="226" text-anchor="middle" font-size="15" font-weight="700" fill="#1F2937">大表</text>
+      <path d="M175 220H205" stroke="#2563EB" stroke-width="3" marker-end="url(#arrow)"/>
+    </g>
+<g>
+      <rect x="220" y="180" width="112" height="80" rx="16" fill="#EFF6FF" stroke="#93C5FD"/>
+      <text x="276" y="226" text-anchor="middle" font-size="15" font-weight="700" fill="#1F2937">索引</text>
+      <path d="M325 220H355" stroke="#2563EB" stroke-width="3" marker-end="url(#arrow)"/>
+    </g>
+<g>
+      <rect x="370" y="180" width="112" height="80" rx="16" fill="#EFF6FF" stroke="#93C5FD"/>
+      <text x="426" y="226" text-anchor="middle" font-size="15" font-weight="700" fill="#1F2937">分区</text>
+      <path d="M475 220H505" stroke="#2563EB" stroke-width="3" marker-end="url(#arrow)"/>
+    </g>
+<g>
+      <rect x="520" y="180" width="112" height="80" rx="16" fill="#EFF6FF" stroke="#93C5FD"/>
+      <text x="576" y="226" text-anchor="middle" font-size="15" font-weight="700" fill="#1F2937">计划</text>
+      <path d="M625 220H655" stroke="#2563EB" stroke-width="3" marker-end="url(#arrow)"/>
+    </g>
+<g>
+      <rect x="670" y="180" width="112" height="80" rx="16" fill="#EFF6FF" stroke="#93C5FD"/>
+      <text x="726" y="226" text-anchor="middle" font-size="15" font-weight="700" fill="#1F2937">边界</text>
+      
+    </g>
+  <text x="70" y="306" font-size="14" fill="#64748B">信息优先 · 结构优先 · 机制导向</text>
+</svg>

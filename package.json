@@ -1,0 +1,25 @@
+{
+  "name": "db-cookbook",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "site:generate": "node scripts/generate-site.mjs",
+    "verify": "node scripts/verify-book-structure.mjs && node scripts/verify-sql-examples.mjs",
+    "book:verify": "node scripts/verify-book-structure.mjs",
+    "sql:verify": "node scripts/verify-sql-examples.mjs",
+    "sql:run": "bash scripts/run-postgres-examples.sh",
+    "docs:dev": "pnpm site:generate && vitepress dev site --host 0.0.0.0",
+    "docs:build": "pnpm site:generate && vitepress build site",
+    "docs:preview": "vitepress preview site --host 0.0.0.0"
+  },
+  "devDependencies": {
+    "mermaid": "^11.4.1",
+    "rollup": "npm:@rollup/wasm-node@4.60.2",
+    "vitepress": "^1.6.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "rollup@4.60.2": "npm:@rollup/wasm-node@4.60.2"
+    }
+  }
+}

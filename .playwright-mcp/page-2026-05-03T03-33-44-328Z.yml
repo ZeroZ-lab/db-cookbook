@@ -1,0 +1,229 @@
+- generic [ref=e3]:
+  - link "Skip to content" [ref=e4] [cursor=pointer]:
+    - /url: "#VPContent"
+  - banner:
+    - generic:
+      - generic:
+        - generic:
+          - link "数据库全书" [ref=e6] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e7]: 数据库全书
+          - generic [ref=e8]:
+            - button "Search" [ref=e11] [cursor=pointer]:
+              - generic [ref=e14]: Search
+              - generic [ref=e15]:
+                - generic [ref=e16]: ⌘
+                - generic [ref=e17]: K
+            - navigation "Main Navigation" [ref=e18]:
+              - generic [ref=e19]: Main Navigation
+              - link "开始阅读" [ref=e20] [cursor=pointer]:
+                - /url: /chapters/00-positioning
+                - generic [ref=e21]: 开始阅读
+              - link "路线图" [ref=e22] [cursor=pointer]:
+                - /url: /roadmap
+                - generic [ref=e23]: 路线图
+              - link "术语表" [ref=e24] [cursor=pointer]:
+                - /url: /glossary
+                - generic [ref=e25]: 术语表
+              - link "SQL 实验室" [ref=e26] [cursor=pointer]:
+                - /url: /sql-lab
+                - generic [ref=e27]: SQL 实验室
+              - link "项目实战" [ref=e28] [cursor=pointer]:
+                - /url: /projects
+                - generic [ref=e29]: 项目实战
+            - button "extra navigation" [ref=e31] [cursor=pointer]
+  - button "本页目录" [ref=e36] [cursor=pointer]: 本页目录
+  - complementary [ref=e38]:
+    - navigation "Sidebar Navigation" [ref=e40]:
+      - generic [ref=e41]: Sidebar Navigation
+      - generic [ref=e43]:
+        - button "数据库全书" [ref=e44]:
+          - heading "数据库全书" [level=2] [ref=e46]
+        - generic [ref=e47]:
+          - link "0. 核心定位" [ref=e51] [cursor=pointer]:
+            - /url: /chapters/00-positioning
+            - paragraph [ref=e52]: 0. 核心定位
+          - link "1. 数据库基础：用 PostgreSQL 建立数据系统直觉" [ref=e56] [cursor=pointer]:
+            - /url: /chapters/01-postgresql-foundations
+            - paragraph [ref=e57]: 1. 数据库基础：用 PostgreSQL 建立数据系统直觉
+          - link "2. SQL 分析能力：大数据方向第一硬技能" [ref=e61] [cursor=pointer]:
+            - /url: /chapters/02-sql-analysis
+            - paragraph [ref=e62]: 2. SQL 分析能力：大数据方向第一硬技能
+          - link "3. PostgreSQL 大表能力：理解单机数据库边界" [ref=e66] [cursor=pointer]:
+            - /url: /chapters/03-postgresql-large-tables
+            - paragraph [ref=e67]: 3. PostgreSQL 大表能力：理解单机数据库边界
+          - link "4. OLTP vs OLAP：大数据系统的第一分水岭" [ref=e71] [cursor=pointer]:
+            - /url: /chapters/04-oltp-olap
+            - paragraph [ref=e72]: 4. OLTP vs OLAP：大数据系统的第一分水岭
+          - link "5. 数据仓库建模：从表设计到分析建模" [ref=e76] [cursor=pointer]:
+            - /url: /chapters/05-data-warehouse-modeling
+            - paragraph [ref=e77]: 5. 数据仓库建模：从表设计到分析建模
+          - link "6. ETL / ELT：数据如何进入大数据系统" [ref=e81] [cursor=pointer]:
+            - /url: /chapters/06-etl-elt
+            - paragraph [ref=e82]: 6. ETL / ELT：数据如何进入大数据系统
+          - link "7. 批处理系统：Hive / Spark / Trino" [ref=e86] [cursor=pointer]:
+            - /url: /chapters/07-batch-processing
+            - paragraph [ref=e87]: 7. 批处理系统：Hive / Spark / Trino
+          - link "8. 实时数据处理：Kafka / Flink" [ref=e91] [cursor=pointer]:
+            - /url: /chapters/08-stream-processing
+            - paragraph [ref=e92]: 8. 实时数据处理：Kafka / Flink
+          - link "9. OLAP 数据库：ClickHouse / Doris / DuckDB" [ref=e96] [cursor=pointer]:
+            - /url: /chapters/09-olap-databases
+            - paragraph [ref=e97]: 9. OLAP 数据库：ClickHouse / Doris / DuckDB
+          - link "10. 向量数据库：面向 AI / RAG / 语义检索的数据系统" [ref=e101] [cursor=pointer]:
+            - /url: /chapters/10-vector-databases
+            - paragraph [ref=e102]: 10. 向量数据库：面向 AI / RAG / 语义检索的数据系统
+          - link "11. 图数据库：面向关系网络 / 知识图谱 / 路径分析的数据系统" [ref=e106] [cursor=pointer]:
+            - /url: /chapters/11-graph-databases
+            - paragraph [ref=e107]: 11. 图数据库：面向关系网络 / 知识图谱 / 路径分析的数据系统
+          - link "12. 数据湖与湖仓架构" [ref=e111] [cursor=pointer]:
+            - /url: /chapters/12-lakehouse
+            - paragraph [ref=e112]: 12. 数据湖与湖仓架构
+          - link "13. 数据治理与工程化" [ref=e116] [cursor=pointer]:
+            - /url: /chapters/13-data-governance
+            - paragraph [ref=e117]: 13. 数据治理与工程化
+          - link "14. 大数据方向项目实战" [ref=e121] [cursor=pointer]:
+            - /url: /chapters/14-projects
+            - paragraph [ref=e122]: 14. 大数据方向项目实战
+          - link "15. 推荐学习顺序" [ref=e126] [cursor=pointer]:
+            - /url: /chapters/15-learning-order
+            - paragraph [ref=e127]: 15. 推荐学习顺序
+          - link "16. 能力地图" [ref=e131] [cursor=pointer]:
+            - /url: /chapters/16-capability-map
+            - paragraph [ref=e132]: 16. 能力地图
+          - link "17. 最终学习目标" [ref=e136] [cursor=pointer]:
+            - /url: /chapters/17-final-goals
+            - paragraph [ref=e137]: 17. 最终学习目标
+      - generic [ref=e139]:
+        - button "辅助阅读" [ref=e140]:
+          - heading "辅助阅读" [level=2] [ref=e142]
+        - generic [ref=e143]:
+          - link "学习路线图" [ref=e147] [cursor=pointer]:
+            - /url: /roadmap
+            - paragraph [ref=e148]: 学习路线图
+          - link "术语表" [ref=e152] [cursor=pointer]:
+            - /url: /glossary
+            - paragraph [ref=e153]: 术语表
+          - link "SQL 实验室" [ref=e157] [cursor=pointer]:
+            - /url: /sql-lab
+            - paragraph [ref=e158]: SQL 实验室
+          - link "项目实战总览" [ref=e162] [cursor=pointer]:
+            - /url: /projects
+            - paragraph [ref=e163]: 项目实战总览
+          - link "事实核查与来源" [ref=e167] [cursor=pointer]:
+            - /url: /sources
+            - paragraph [ref=e168]: 事实核查与来源
+  - generic [ref=e173]:
+    - main [ref=e174]:
+      - generic [ref=e176]:
+        - heading "事实核查与来源 Permalink to \"事实核查与来源\"" [level=1] [ref=e177]:
+          - text: 事实核查与来源
+          - link "Permalink to \"事实核查与来源\"" [ref=e178] [cursor=pointer]:
+            - /url: "#事实核查与来源"
+            - text: "#"
+        - paragraph [ref=e179]: 这本书的技术判断分为三类：
+        - list [ref=e180]:
+          - listitem [ref=e181]: 官方事实：来自数据库、框架或项目官方文档。
+          - listitem [ref=e182]: 编辑判断：基于系统设计经验的解释和取舍。
+          - listitem [ref=e183]: 待核查内容：后续出版级精修时必须补证据或降级表述。
+        - heading "当前来源矩阵 Permalink to \"当前来源矩阵\"" [level=2] [ref=e184]:
+          - text: 当前来源矩阵
+          - link "Permalink to \"当前来源矩阵\"" [ref=e185] [cursor=pointer]:
+            - /url: "#当前来源矩阵"
+            - text: "#"
+        - table [ref=e186]:
+          - rowgroup [ref=e187]:
+            - row "主题 优先来源 用途" [ref=e188]:
+              - columnheader "主题" [ref=e189]
+              - columnheader "优先来源" [ref=e190]
+              - columnheader "用途" [ref=e191]
+          - rowgroup [ref=e192]:
+            - row "PostgreSQL https://www.postgresql.org/docs/ 分区、索引、物化视图、逻辑复制、事务" [ref=e193]:
+              - cell "PostgreSQL" [ref=e194]
+              - cell "https://www.postgresql.org/docs/" [ref=e195]:
+                - link "https://www.postgresql.org/docs/" [ref=e196] [cursor=pointer]:
+                  - /url: https://www.postgresql.org/docs/
+              - cell "分区、索引、物化视图、逻辑复制、事务" [ref=e197]
+            - row "VitePress https://vitepress.dev/ 在线阅读站点、导航、Markdown、构建" [ref=e198]:
+              - cell "VitePress" [ref=e199]
+              - cell "https://vitepress.dev/" [ref=e200]:
+                - link "https://vitepress.dev/" [ref=e201] [cursor=pointer]:
+                  - /url: https://vitepress.dev/
+              - cell "在线阅读站点、导航、Markdown、构建" [ref=e202]
+            - row "Kafka https://kafka.apache.org/documentation/ Topic、Partition、Offset、Connect、语义" [ref=e203]:
+              - cell "Kafka" [ref=e204]
+              - cell "https://kafka.apache.org/documentation/" [ref=e205]:
+                - link "https://kafka.apache.org/documentation/" [ref=e206] [cursor=pointer]:
+                  - /url: https://kafka.apache.org/documentation/
+              - cell "Topic、Partition、Offset、Connect、语义" [ref=e207]
+            - row "Flink https://nightlies.apache.org/flink/flink-docs-stable/ Event Time、Watermark、State、Checkpoint" [ref=e208]:
+              - cell "Flink" [ref=e209]
+              - cell "https://nightlies.apache.org/flink/flink-docs-stable/" [ref=e210]:
+                - link "https://nightlies.apache.org/flink/flink-docs-stable/" [ref=e211] [cursor=pointer]:
+                  - /url: https://nightlies.apache.org/flink/flink-docs-stable/
+              - cell "Event Time、Watermark、State、Checkpoint" [ref=e212]
+            - row "ClickHouse https://clickhouse.com/docs/ MergeTree、列式存储、物化视图" [ref=e213]:
+              - cell "ClickHouse" [ref=e214]
+              - cell "https://clickhouse.com/docs/" [ref=e215]:
+                - link "https://clickhouse.com/docs/" [ref=e216] [cursor=pointer]:
+                  - /url: https://clickhouse.com/docs/
+              - cell "MergeTree、列式存储、物化视图" [ref=e217]
+            - row "Apache Doris https://doris.apache.org/docs/ FE/BE、表模型、实时数仓" [ref=e218]:
+              - cell "Apache Doris" [ref=e219]
+              - cell "https://doris.apache.org/docs/" [ref=e220]:
+                - link "https://doris.apache.org/docs/" [ref=e221] [cursor=pointer]:
+                  - /url: https://doris.apache.org/docs/
+              - cell "FE/BE、表模型、实时数仓" [ref=e222]
+            - row "DuckDB https://duckdb.org/docs/ 本地 OLAP、Parquet 查询" [ref=e223]:
+              - cell "DuckDB" [ref=e224]
+              - cell "https://duckdb.org/docs/" [ref=e225]:
+                - link "https://duckdb.org/docs/" [ref=e226] [cursor=pointer]:
+                  - /url: https://duckdb.org/docs/
+              - cell "本地 OLAP、Parquet 查询" [ref=e227]
+            - row "Apache Iceberg https://iceberg.apache.org/docs/ 表格式、快照、分区演化" [ref=e228]:
+              - cell "Apache Iceberg" [ref=e229]
+              - cell "https://iceberg.apache.org/docs/" [ref=e230]:
+                - link "https://iceberg.apache.org/docs/" [ref=e231] [cursor=pointer]:
+                  - /url: https://iceberg.apache.org/docs/
+              - cell "表格式、快照、分区演化" [ref=e232]
+            - row "pgvector https://github.com/pgvector/pgvector PostgreSQL 向量扩展能力" [ref=e233]:
+              - cell "pgvector" [ref=e234]
+              - cell "https://github.com/pgvector/pgvector" [ref=e235]:
+                - link "https://github.com/pgvector/pgvector" [ref=e236] [cursor=pointer]:
+                  - /url: https://github.com/pgvector/pgvector
+              - cell "PostgreSQL 向量扩展能力" [ref=e237]
+            - row "Milvus https://milvus.io/docs 向量数据库、索引、检索" [ref=e238]:
+              - cell "Milvus" [ref=e239]
+              - cell "https://milvus.io/docs" [ref=e240]:
+                - link "https://milvus.io/docs" [ref=e241] [cursor=pointer]:
+                  - /url: https://milvus.io/docs
+              - cell "向量数据库、索引、检索" [ref=e242]
+            - row "Qdrant https://qdrant.tech/documentation/ 向量数据库、过滤和检索" [ref=e243]:
+              - cell "Qdrant" [ref=e244]
+              - cell "https://qdrant.tech/documentation/" [ref=e245]:
+                - link "https://qdrant.tech/documentation/" [ref=e246] [cursor=pointer]:
+                  - /url: https://qdrant.tech/documentation/
+              - cell "向量数据库、过滤和检索" [ref=e247]
+            - row "Neo4j https://neo4j.com/docs/ 图数据库和 Cypher" [ref=e248]:
+              - cell "Neo4j" [ref=e249]
+              - cell "https://neo4j.com/docs/" [ref=e250]:
+                - link "https://neo4j.com/docs/" [ref=e251] [cursor=pointer]:
+                  - /url: https://neo4j.com/docs/
+              - cell "图数据库和 Cypher" [ref=e252]
+        - heading "精修要求 Permalink to \"精修要求\"" [level=2] [ref=e253]:
+          - text: 精修要求
+          - link "Permalink to \"精修要求\"" [ref=e254] [cursor=pointer]:
+            - /url: "#精修要求"
+            - text: "#"
+        - list [ref=e255]:
+          - listitem [ref=e256]: 强事实必须能落到官方文档或项目文档。
+          - listitem [ref=e257]: 产品定位类表述优先写成“适合/常见用于”，避免绝对化。
+          - listitem [ref=e258]: Exactly Once、事务、CDC、湖仓表格式等高误解概念必须单独核查。
+          - listitem [ref=e259]: 每轮出版级精修都要更新本页。
+    - contentinfo [ref=e260]:
+      - navigation "Pager" [ref=e261]:
+        - generic [ref=e262]: Pager
+        - link "上一章 项目实战总览" [ref=e264] [cursor=pointer]:
+          - /url: /projects
+          - generic [ref=e265]: 上一章
+          - generic [ref=e266]: 项目实战总览

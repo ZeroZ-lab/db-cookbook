@@ -1,0 +1,1 @@
+import{_ as e,o as r,c as a,ag as d}from"./chunks/framework.CAXxHpAX.js";const f=JSON.parse('{"title":"事实核查与来源","description":"","frontmatter":{},"headers":[],"relativePath":"sources.md","filePath":"sources.md"}'),o={name:"sources.md"};function s(c,t,l,h,i,n){return r(),a("div",null,[...t[0]||(t[0]=[d("",10)])])}const g=e(o,[["render",s]]);export{f as __pageData,g as default};

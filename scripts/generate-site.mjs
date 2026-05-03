@@ -1,0 +1,840 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+const root = process.cwd();
+const siteDir = path.join(root, 'site');
+const chaptersDir = path.join(siteDir, 'chapters');
+
+const chapters = [
+  {
+    chapter: 0,
+    title: '核心定位',
+    source: 'manuscript/chapter-00-positioning.md',
+    target: '00-positioning.md',
+    summary: '说明本书为什么以 PostgreSQL 为入口，如何把数据库学习连接到大数据与 AI 数据基础设施。',
+    diagram: `flowchart LR
+  A["会查数据"] --> B["PostgreSQL 直觉"]
+  B --> C["SQL 分析"]
+  C --> D["数仓与数据链路"]
+  D --> E["批处理 / 实时 / OLAP"]
+  E --> F["湖仓"]
+  F --> G["向量 / 图"]
+  G --> H["智能数据系统"]`
+  },
+  {
+    chapter: 1,
+    title: '数据库基础：用 PostgreSQL 建立数据系统直觉',
+    source: 'manuscript/part-01-postgresql-foundations/chapter-01.md',
+    target: '01-postgresql-foundations.md',
+    summary: '用 PostgreSQL 建立数据如何被组织、约束、查询和保持一致的基础直觉。',
+    diagram: `flowchart TB
+  S["PostgreSQL Server"] --> D["Database"]
+  D --> SC["Schema"]
+  SC --> T["Table"]
+  T --> R["Row: 一条事实"]
+  T --> C["Column: 事实属性"]`
+  },
+  {
+    chapter: 2,
+    title: 'SQL 分析能力：大数据方向第一硬技能',
+    source: 'manuscript/chapter-02-sql-analysis.md',
+    target: '02-sql-analysis.md',
+    summary: '把 SQL 从查询语法提升为分析表达能力，训练取数、聚合、关联、窗口和指标口径。',
+    diagram: `flowchart LR
+  A["基础查询"] --> B["聚合分析"]
+  B --> C["多表关联"]
+  C --> D["复杂 SQL"]
+  D --> E["窗口函数"]
+  E --> F["指标 SQL"]`
+  },
+  {
+    chapter: 3,
+    title: 'PostgreSQL 大表能力：理解单机数据库边界',
+    source: 'manuscript/chapter-03-postgresql-large-tables.md',
+    target: '03-postgresql-large-tables.md',
+    summary: '从分区、索引、物化视图和执行计划理解 PostgreSQL 如何支撑大表，以及边界在哪里。',
+    diagram: `flowchart LR
+  A["大表变慢"] --> B{"访问模式"}
+  B --> C["索引"]
+  B --> D["分区"]
+  B --> E["物化视图"]
+  C --> F["EXPLAIN 验证"]
+  D --> F
+  E --> F
+  F --> G["识别 OLAP 边界"]`
+  },
+  {
+    chapter: 4,
+    title: 'OLTP vs OLAP：大数据系统的第一分水岭',
+    source: 'manuscript/chapter-04-oltp-olap.md',
+    target: '04-oltp-olap.md',
+    summary: '解释业务交易和分析计算为什么会分化，以及 PostgreSQL 与 OLAP 系统如何分工。',
+    diagram: `flowchart LR
+  P["PostgreSQL 业务库"] --> O1["OLTP: 高频小事务 / 强一致"]
+  P --> O2["OLAP: 大范围扫描 / 聚合分析"]
+  O1 --> A["业务正确"]
+  O2 --> B["分析效率"]`
+  },
+  {
+    chapter: 5,
+    title: '数据仓库建模：从表设计到分析建模',
+    source: 'manuscript/chapter-05-data-warehouse-modeling.md',
+    target: '05-data-warehouse-modeling.md',
+    summary: '把业务表重构成事实表、维度表、分层模型和稳定指标体系。',
+    diagram: `flowchart LR
+  A["PostgreSQL 源表"] --> ODS["ODS 原始层"]
+  ODS --> DWD["DWD 明细层"]
+  DWD --> DWS["DWS 汇总层"]
+  DWS --> ADS["ADS 应用层"]
+  DWD --> F["事实表"]
+  DWD --> DIM["维度表"]`
+  },
+  {
+    chapter: 6,
+    title: 'ETL / ELT：数据如何进入大数据系统',
+    source: 'manuscript/chapter-06-etl-elt.md',
+    target: '06-etl-elt.md',
+    summary: '说明 PostgreSQL 数据如何通过批量同步、CDC、转换和调度进入数据平台。',
+    diagram: `flowchart LR
+  P["PostgreSQL"] --> B["Batch Extract"]
+  P --> C["CDC / WAL"]
+  B --> W["Data Warehouse"]
+  C --> K["Kafka"]
+  K --> F["Flink"]
+  F --> O["OLAP / Lakehouse"]
+  W --> BI["BI / 指标"]`
+  },
+  {
+    chapter: 7,
+    title: '批处理系统：Hive / Spark / Trino',
+    source: 'manuscript/chapter-07-batch-processing.md',
+    target: '07-batch-processing.md',
+    summary: '理解 Hive、Spark、Trino 在历史数据加工、分布式计算和跨源分析中的定位。',
+    diagram: `flowchart LR
+  H["Hive: 表和元数据"] --> S["Spark: 大规模计算"]
+  S --> T["Trino: 跨源交互查询"]
+  H --> F["Parquet / ORC / Object Storage"]
+  T --> BI["分析和探索"]`
+  },
+  {
+    chapter: 8,
+    title: '实时数据处理：Kafka / Flink',
+    source: 'manuscript/chapter-08-stream-processing.md',
+    target: '08-stream-processing.md',
+    summary: '围绕事件流、状态、窗口、水位线和一致性理解实时数据系统。',
+    diagram: `flowchart LR
+  P["PostgreSQL CDC"] --> D["Debezium"]
+  D --> K["Kafka Topic"]
+  K --> F["Flink: Window / State"]
+  F --> C["ClickHouse / Doris"]
+  C --> R["实时看板"]`
+  },
+  {
+    chapter: 9,
+    title: 'OLAP 数据库：ClickHouse / Doris / DuckDB',
+    source: 'manuscript/chapter-09-olap-databases.md',
+    target: '09-olap-databases.md',
+    summary: '理解列式存储、MPP、本地 OLAP 和 PostgreSQL 到分析库的链路。',
+    diagram: `flowchart LR
+  A["分析查询"] --> B["列式读取"]
+  B --> C["压缩 / 排序 / 索引"]
+  C --> D["聚合执行"]
+  D --> E["BI / Dashboard"]
+  P["PostgreSQL"] --> S["同步"] --> C`
+  },
+  {
+    chapter: 10,
+    title: '向量数据库：面向 AI / RAG / 语义检索的数据系统',
+    source: 'manuscript/chapter-10-vector-databases.md',
+    target: '10-vector-databases.md',
+    summary: '把非结构化数据转成可检索语义空间，理解 RAG、混合检索和向量治理。',
+    diagram: `flowchart LR
+  D["文档"] --> P["解析"]
+  P --> C["Chunking"]
+  C --> E["Embedding"]
+  E --> V["Vector DB"]
+  Q["Query"] --> QE["Query Embedding"]
+  QE --> V
+  V --> R["Rerank"]
+  R --> L["LLM Context"]`
+  },
+  {
+    chapter: 11,
+    title: '图数据库：面向关系网络 / 知识图谱 / 路径分析的数据系统',
+    source: 'manuscript/chapter-11-graph-databases.md',
+    target: '11-graph-databases.md',
+    summary: '理解节点、边、路径、多跳查询、知识图谱和 GraphRAG 在数据平台中的位置。',
+    diagram: `flowchart LR
+  U["User"] -->|PURCHASED| P["Product"]
+  P -->|BELONGS_TO| C["Category"]
+  D["Document"] -->|MENTIONS| E["Entity"]
+  E -->|RELATED_TO| E2["Entity"]
+  E2 --> G["GraphRAG Context"]`
+  },
+  {
+    chapter: 12,
+    title: '数据湖与湖仓架构',
+    source: 'manuscript/chapter-12-lakehouse.md',
+    target: '12-lakehouse.md',
+    summary: '用对象存储、文件格式、表格式、Catalog 和多引擎查询构建开放分析底座。',
+    diagram: `flowchart LR
+  DB["PostgreSQL / MySQL"] --> I["Ingestion"]
+  I --> O["Object Storage"]
+  O --> P["Parquet"]
+  P --> T["Iceberg / Delta / Hudi"]
+  T --> S["Spark"]
+  T --> TR["Trino"]
+  T --> F["Flink"]
+  TR --> BI["BI / AI"]`
+  },
+  {
+    chapter: 13,
+    title: '数据治理与工程化',
+    source: 'manuscript/chapter-13-data-governance.md',
+    target: '13-data-governance.md',
+    summary: '覆盖质量、元数据、血缘、权限、指标和 AI 知识治理，让数据平台长期可信。',
+    diagram: `mindmap
+  root((数据治理))
+    数据质量
+    元数据
+    血缘
+    权限安全
+    指标治理
+    知识治理`
+  },
+  {
+    chapter: 14,
+    title: '大数据方向项目实战',
+    source: 'manuscript/chapter-14-projects.md',
+    target: '14-projects.md',
+    summary: '用 7 个项目把 PostgreSQL、OLAP、实时、湖仓、RAG、图和治理串成可执行闭环。',
+    diagram: `flowchart LR
+  P1["1 PostgreSQL 分析库"] --> P2["2 PG -> ClickHouse"]
+  P2 --> P3["3 CDC 实时数仓"]
+  P3 --> P4["4 Mini Lakehouse"]
+  P4 --> P5["5 RAG 知识库"]
+  P5 --> P6["6 知识图谱"]
+  P6 --> P7["7 治理平台"]`
+  },
+  {
+    chapter: 15,
+    title: '推荐学习顺序',
+    source: 'manuscript/chapter-15-learning-order.md',
+    target: '15-learning-order.md',
+    summary: '给出从 PostgreSQL 到数据治理的阶段化学习路径，避免直接跳工具。',
+    diagram: `flowchart TB
+  A["PostgreSQL"] --> B["SQL"]
+  B --> C["大表边界"]
+  C --> D["数仓"]
+  D --> E["ETL / CDC"]
+  E --> F["OLAP / 批处理"]
+  F --> G["实时"]
+  G --> H["向量 / 图"]
+  H --> I["湖仓 / 治理"]`
+  },
+  {
+    chapter: 16,
+    title: '能力地图',
+    source: 'manuscript/chapter-16-capability-map.md',
+    target: '16-capability-map.md',
+    summary: '把全书能力沉淀为 SQL、建模、链路、选型和治理五类能力。',
+    diagram: `mindmap
+  root((能力地图))
+    SQL 能力
+    建模能力
+    数据链路能力
+    系统选型能力
+    治理能力`
+  },
+  {
+    chapter: 17,
+    title: '最终学习目标',
+    source: 'manuscript/chapter-17-final-goals.md',
+    target: '17-final-goals.md',
+    summary: '定义从会查数据到会构建智能数据系统的最终能力标准。',
+    diagram: `flowchart LR
+  A["会查数据"] --> B["理解数据结构"]
+  B --> C["设计数据链路"]
+  C --> D["构建分析系统"]
+  D --> E["接入 AI 检索"]
+  E --> F["治理与演化"]
+  F --> G["会构建智能数据系统"]`
+  }
+];
+
+function ensureDir(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function read(file) {
+  return fs.readFileSync(path.join(root, file), 'utf8');
+}
+
+function write(file, content) {
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, content);
+}
+
+function stripH1(markdown) {
+  return markdown.replace(/^# .+\n+/, '');
+}
+
+function frontmatter(chapter) {
+  const prev = chapters[chapters.findIndex((item) => item.target === chapter.target) - 1];
+  const next = chapters[chapters.findIndex((item) => item.target === chapter.target) + 1];
+  const lines = [
+    '---',
+    `title: "${chapter.chapter}. ${chapter.title}"`,
+    `description: "${chapter.summary}"`,
+    prev ? `prev: { text: "${prev.chapter}. ${prev.title}", link: "/chapters/${prev.target.replace(/\.md$/, '')}" }` : 'prev: false',
+    next ? `next: { text: "${next.chapter}. ${next.title}", link: "/chapters/${next.target.replace(/\.md$/, '')}" }` : 'next: false',
+    '---',
+    ''
+  ];
+  return lines.join('\n');
+}
+
+function chapterPage(chapter) {
+  const source = stripH1(read(chapter.source)).trim();
+  const visualPath = chapter.chapter <= 5 ? `\n![${chapter.title}](/images/chapter-${String(chapter.chapter).padStart(2, '0')}.svg)\n` : '';
+  return `${frontmatter(chapter)}# ${chapter.chapter}. ${chapter.title}
+
+::: tip 本章导读
+${chapter.summary}
+:::
+${visualPath}
+
+\`\`\`mermaid
+${chapter.diagram}
+\`\`\`
+
+${source}
+`;
+}
+
+function linkFor(chapter) {
+  return `/chapters/${chapter.target.replace(/\.md$/, '')}`;
+}
+
+function createIndex() {
+  const list = chapters
+    .map((chapter) => `- [${chapter.chapter}. ${chapter.title}](${linkFor(chapter)})：${chapter.summary}`)
+    .join('\n');
+  return `---
+layout: home
+hero:
+  name: "数据库全书"
+  text: "从 PostgreSQL 到智能数据系统"
+  tagline: "一条从会查数据到会构建大数据与 AI 数据基础设施的系统化学习路径。"
+  actions:
+    - theme: brand
+      text: 开始阅读
+      link: /chapters/00-positioning
+    - theme: alt
+      text: 查看路线图
+      link: /roadmap
+features:
+  - title: PostgreSQL 作为入口
+    details: 先建立数据组织、约束、事务、查询和单机边界的直觉。
+  - title: 大数据系统演化
+    details: 从 SQL、数仓、ETL/CDC、批处理、实时、OLAP 到湖仓。
+  - title: AI 数据基础设施
+    details: 把向量数据库、图数据库、RAG、GraphRAG 和治理纳入统一架构。
+---
+
+## 阅读路径
+
+${list}
+`;
+}
+
+function createRoadmap() {
+  return `# 学习路线图
+
+这本书采用演化式叙事：先从 PostgreSQL 建立数据库直觉，再逐步进入分析系统、大数据平台和 AI 数据基础设施。
+
+\`\`\`mermaid
+flowchart LR
+  A["PostgreSQL 基础"] --> B["SQL 分析能力"]
+  B --> C["大表与查询优化"]
+  C --> D["OLTP vs OLAP"]
+  D --> E["数仓建模"]
+  E --> F["ETL / CDC"]
+  F --> G["批处理 / 实时处理"]
+  G --> H["OLAP 数据库"]
+  H --> I["湖仓"]
+  I --> J["向量数据库"]
+  I --> K["图数据库"]
+  J --> L["数据治理"]
+  K --> L
+  L --> M["智能数据系统"]
+\`\`\`
+
+## 最小闭环
+
+\`\`\`mermaid
+flowchart LR
+  P["PostgreSQL 业务数据"] --> S["SQL 分析"]
+  S --> W["数仓建模"]
+  W --> E["ETL / CDC"]
+  E --> C["ClickHouse / Spark / Flink"]
+  C --> A["向量检索 / 图关系分析"]
+  A --> APP["指标、BI、RAG、GraphRAG 和数据应用"]
+\`\`\`
+`;
+}
+
+function createGlossary() {
+  return `# 术语表
+
+## PostgreSQL 基础
+
+- **Database**：一个相对独立的数据世界。
+- **Schema**：数据库内部的命名空间。
+- **Table**：业务对象、事件或关系的数据化表达。
+- **Row**：一条事实记录。
+- **Column**：事实的属性。
+- **Primary Key**：解决记录身份问题。
+- **Foreign Key**：解决表之间关系问题。
+- **Transaction**：让多步修改表现得像一个可靠动作。
+- **Index**：用写入成本换读取路径，加速特定查询访问。
+- **Partition**：为持续增长的大表建立可管理、可裁剪的物理边界。
+- **Materialized View**：把重复查询结果提前算好并存下来，需要刷新。
+- **WAL**：Write-Ahead Log，PostgreSQL 的预写日志，是逻辑复制和 CDC 的基础。
+
+## 数据建模
+
+- **Fact Table**：记录业务事实的表，一行代表一笔交易、一次事件或一个度量。
+- **Dimension Table**：描述业务对象属性的表，如用户、商品、地区。
+- **Star Schema**：以事实表为中心、维度表围绕的星型建模方式。
+- **ODS / DWD / DWS / ADS**：数仓分层，从原始数据到明细、汇总和应用层。
+- **Metric**：可量化的业务度量，如 GMV、DAU、转化率。
+- **Granularity**：表中一行代表的业务粒度。
+
+## 数据平台
+
+- **OLTP**：面向业务交易，高频小事务、低延迟和强一致优先。
+- **OLAP**：面向数据分析，大范围扫描、聚合和吞吐优先。
+- **ETL / ELT**：数据抽取、转换、装载的链路模式。
+- **CDC**：捕获数据库变更并形成持续数据流。
+- **Data Lineage**：数据从源到目标的流转路径和依赖关系。
+
+## 批处理与流处理
+
+- **Spark**：大规模分布式批处理和数据转换引擎。
+- **Flink**：有状态流计算引擎，支持事件时间、窗口和 Exactly Once 语义。
+- **Kafka**：分布式事件流平台，用 Topic 和 Partition 承接持续数据流。
+- **Watermark**：Flink 中判断事件时间推进到哪里的机制，决定窗口何时输出。
+- **Exactly Once**：端到端处理语义，需要 Source、Checkpoint 和 Sink 共同配合。
+
+## OLAP 引擎
+
+- **ClickHouse**：列式高性能 OLAP 数据库，核心引擎为 MergeTree。
+- **MergeTree**：ClickHouse 的核心表引擎，通过排序键和稀疏索引优化分析查询。
+- **Doris**：面向实时数仓和 BI 的 MPP 分析数据库。
+- **DuckDB**：本地嵌入式 OLAP 数据库，可直接查询 Parquet 文件。
+
+## 湖仓
+
+- **Lakehouse**：用表格式把对象存储中的文件组织成可管理的分析表。
+- **Iceberg**：湖仓表格式，支持快照、schema 演化、分区演化和时间旅行。
+- **Delta Lake**：湖仓表格式，提供 ACID 事务和版本管理。
+- **Hudi**：湖仓表格式，支持增量处理和近实时数据入湖。
+- **Parquet**：列式存储格式，适合分析查询和跨引擎共享。
+- **Catalog**：管理湖仓表元数据、快照和 schema 的目录服务。
+- **Snapshot**：湖仓表在某一时刻的完整数据版本。
+
+## 向量数据库
+
+- **Embedding**：把文本、图片、代码等对象转换成向量。
+- **Vector Search**：基于向量相似度检索内容。
+- **HNSW**：分层可导航小世界图索引，适合高召回低延迟场景。
+- **IVF**：倒排文件索引，通过聚类加速大规模向量检索。
+- **Chunk**：文档切分后的语义片段，是 RAG 检索的基本单位。
+- **Rerank**：对召回结果重新排序，提升最终答案质量。
+- **pgvector**：PostgreSQL 的向量扩展，适合中小规模 RAG 场景。
+- **Milvus**：专门向量数据库，适合大规模向量检索。
+
+## 图数据库
+
+- **Node / Vertex**：图中的实体节点。
+- **Edge / Relationship**：实体之间的关系。
+- **Property Graph**：节点和边都可以带属性的图模型。
+- **Cypher**：Neo4j 的图查询语言，用模式匹配表达路径查询。
+- **GraphRAG**：结合图关系和检索增强生成的 AI 应用模式。
+- **Neo4j**：生态成熟的图数据库，适合知识图谱和路径查询。
+
+## 数据治理
+
+- **Data Governance**：质量、元数据、血缘、权限、指标和知识治理的综合体系。
+- **Metadata**：描述数据的数据，包括技术元数据和业务元数据。
+- **Data Quality**：数据的完整性、准确性、一致性、唯一性和及时性。
+- **Metric Governance**：统一指标定义、口径、血缘和版本管理。
+`;
+}
+
+function createProjects() {
+  return `# 项目实战总览
+
+7 个项目按系统演化顺序推进。
+
+\`\`\`mermaid
+flowchart TB
+  P1["PostgreSQL 电商数据分析库"] --> P2["PostgreSQL -> ClickHouse 分析链路"]
+  P2 --> P3["PostgreSQL CDC 实时数仓 Demo"]
+  P3 --> P4["Mini Lakehouse"]
+  P4 --> P5["RAG 向量知识库"]
+  P5 --> P6["知识图谱与 GraphRAG"]
+  P6 --> P7["数据治理 Mini Platform"]
+\`\`\`
+
+详见 [第 14 章：大数据方向项目实战](/chapters/14-projects)。
+`;
+}
+
+function createSqlLab() {
+  return `# SQL 实验室
+
+这一页用于把书中的 SQL 示例从“可读”推进到“可运行”。
+
+## 样例数据
+
+- PostgreSQL 建表与样例数据：[examples/ecommerce-postgres.sql](/examples/ecommerce-postgres.sql)
+- 第 2 章 SQL 查询练习：[examples/chapter-02-queries.sql](/examples/chapter-02-queries.sql)
+
+## 建议运行方式
+
+\`\`\`bash
+createdb db_cookbook
+psql db_cookbook -f site/public/examples/ecommerce-postgres.sql
+psql db_cookbook -f site/public/examples/chapter-02-queries.sql
+\`\`\`
+
+也可以使用仓库脚本：
+
+\`\`\`bash
+DB_NAME=db_cookbook_lab pnpm sql:run
+\`\`\`
+
+## 当前验证
+
+当前仓库提供两个层级的验证：
+
+\`\`\`bash
+node scripts/verify-sql-examples.mjs
+\`\`\`
+
+这个脚本会检查样例 schema、表名、字段名和第 2 章查询引用是否一致。
+
+如果本地安装了 PostgreSQL，再执行上面的 \`createdb\` / \`psql\` 命令做真实运行验证。静态验证不能替代数据库执行，它只能提前发现文档和 SQL 样例之间的结构漂移。
+
+## 数据模型
+
+\`\`\`mermaid
+erDiagram
+  users ||--o{ orders : places
+  orders ||--o{ order_items : contains
+  products ||--o{ order_items : appears_in
+  orders ||--o{ payments : paid_by
+  users ||--o{ events : emits
+\`\`\`
+
+## 验收目标
+
+- 能跑通基础查询、聚合、JOIN、CTE、窗口函数和指标 SQL。
+- 能用同一套样例数据解释第 1-5 章中的表结构、指标口径和数仓建模。
+- 后续每章新增 SQL 示例时，都优先接入这套样例数据。
+`;
+}
+
+function createSourcesPage() {
+  return `# 事实核查与来源
+
+这本书的技术判断分为三类：
+
+- 官方事实：来自数据库、框架或项目官方文档。
+- 编辑判断：基于系统设计经验的解释和取舍。
+- 待核查内容：后续出版级精修时必须补证据或降级表述。
+
+## 当前来源矩阵
+
+| 主题 | 优先来源 | 用途 |
+| --- | --- | --- |
+| PostgreSQL | https://www.postgresql.org/docs/ | 分区、索引、物化视图、逻辑复制、事务 |
+| VitePress | https://vitepress.dev/ | 在线阅读站点、导航、Markdown、构建 |
+| Kafka | https://kafka.apache.org/documentation/ | Topic、Partition、Offset、Connect、语义 |
+| Flink | https://nightlies.apache.org/flink/flink-docs-stable/ | Event Time、Watermark、State、Checkpoint |
+| ClickHouse | https://clickhouse.com/docs/ | MergeTree、列式存储、物化视图 |
+| Apache Doris | https://doris.apache.org/docs/ | FE/BE、表模型、实时数仓 |
+| DuckDB | https://duckdb.org/docs/ | 本地 OLAP、Parquet 查询 |
+| Apache Iceberg | https://iceberg.apache.org/docs/ | 表格式、快照、分区演化 |
+| pgvector | https://github.com/pgvector/pgvector | PostgreSQL 向量扩展能力 |
+| Milvus | https://milvus.io/docs | 向量数据库、索引、检索 |
+| Qdrant | https://qdrant.tech/documentation/ | 向量数据库、过滤和检索 |
+| Neo4j | https://neo4j.com/docs/ | 图数据库和 Cypher |
+
+## 精修要求
+
+- 强事实必须能落到官方文档或项目文档。
+- 产品定位类表述优先写成“适合/常见用于”，避免绝对化。
+- Exactly Once、事务、CDC、湖仓表格式等高误解概念必须单独核查。
+- 每轮出版级精修都要更新本页。
+
+## 待核查清单
+
+完整待核查条目维护在仓库文档 \`docs/fact-check-matrix.md\`。
+
+当前在线版本的来源矩阵表示“优先查证来源”，不表示所有章节事实已经逐条核查完成。出版级交付前，必须完成 PostgreSQL、Kafka、Flink、ClickHouse、Doris、DuckDB、Iceberg、pgvector、Milvus、Qdrant、Neo4j 等高风险技术判断的逐条核查。
+`;
+}
+
+function createConfig() {
+  const sidebarItems = chapters.map((chapter) => ({
+    text: `${chapter.chapter}. ${chapter.title}`,
+    link: linkFor(chapter)
+  }));
+  return `import { defineConfig } from 'vitepress'
+
+const sidebarItems = ${JSON.stringify(sidebarItems, null, 2)}
+
+export default defineConfig({
+  title: '数据库全书',
+  description: '从 PostgreSQL 到智能数据系统',
+  lang: 'zh-CN',
+  cleanUrls: true,
+  ignoreDeadLinks: [
+    /^\\/examples\\//
+  ],
+  head: [
+    ['link', { rel: 'icon', href: '/images/logo.svg', type: 'image/svg+xml' }]
+  ],
+  themeConfig: {
+    logo: '/images/logo.svg',
+    nav: [
+      { text: '开始阅读', link: '/chapters/00-positioning' },
+      { text: '路线图', link: '/roadmap' },
+      { text: '术语表', link: '/glossary' },
+      { text: 'SQL 实验室', link: '/sql-lab' },
+      { text: '项目实战', link: '/projects' }
+    ],
+    sidebar: [
+      {
+        text: '数据库全书',
+        items: sidebarItems
+      },
+      {
+        text: '辅助阅读',
+        items: [
+          { text: '学习路线图', link: '/roadmap' },
+          { text: '术语表', link: '/glossary' },
+          { text: 'SQL 实验室', link: '/sql-lab' },
+          { text: '项目实战总览', link: '/projects' },
+          { text: '事实核查与来源', link: '/sources' }
+        ]
+      }
+    ],
+    outline: {
+      level: [2, 3],
+      label: '本页目录'
+    },
+    search: {
+      provider: 'local'
+    },
+    docFooter: {
+      prev: '上一章',
+      next: '下一章'
+    },
+    footer: {
+      message: '从 PostgreSQL 到智能数据系统',
+      copyright: 'Copyright © 2026'
+    }
+  },
+  markdown: {
+    lineNumbers: true,
+    config(md) {
+      const defaultFence = md.renderer.rules.fence
+      md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+        const token = tokens[idx]
+        const info = token.info.trim()
+        if (info === 'mermaid') {
+          const code = encodeURIComponent(token.content)
+          return \`<Mermaid code="\${code}" />\`
+        }
+        return defaultFence ? defaultFence(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options)
+      }
+    }
+  }
+})
+`;
+}
+
+function createTheme() {
+  return `import DefaultTheme from 'vitepress/theme'
+import Mermaid from './Mermaid.vue'
+import './custom.css'
+
+export default {
+  extends: DefaultTheme,
+  enhanceApp({ app }) {
+    app.component('Mermaid', Mermaid)
+  }
+}
+`;
+}
+
+function createMermaidComponent() {
+  return `<template>
+  <div ref="container" class="mermaid-block" />
+</template>
+
+<script setup>
+import { onMounted, ref, watch } from 'vue'
+
+const props = defineProps({
+  code: {
+    type: String,
+    required: true
+  }
+})
+
+const container = ref(null)
+
+async function renderDiagram() {
+  if (!container.value) return
+  const { default: mermaid } = await import('mermaid')
+  const source = decodeURIComponent(props.code)
+  const id = 'mermaid-' + Math.random().toString(36).slice(2)
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: 'strict',
+    theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default'
+  })
+  const result = await mermaid.render(id, source)
+  container.value.innerHTML = result.svg
+}
+
+onMounted(renderDiagram)
+watch(() => props.code, renderDiagram)
+</script>
+`;
+}
+
+function createCss() {
+  return `:root {
+  --vp-c-brand-1: #2563eb;
+  --vp-c-brand-2: #1d4ed8;
+  --vp-c-brand-3: #60a5fa;
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #1f2937, #2563eb);
+}
+
+.VPDoc .content {
+  max-width: 900px;
+}
+
+.vp-doc p {
+  line-height: 1.9;
+}
+
+.vp-doc blockquote {
+  border-left-color: var(--vp-c-brand-1);
+  background: color-mix(in srgb, var(--vp-c-brand-1) 8%, transparent);
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.mermaid-block {
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 10px;
+  background: var(--vp-c-bg-soft);
+  overflow-x: auto;
+}
+
+.mermaid-block svg {
+  max-width: 100%;
+  height: auto;
+}
+`;
+}
+
+function createLogo() {
+  return `<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="96" height="96" rx="22" fill="#1f2937"/>
+  <path d="M24 30C24 24.477 28.477 20 34 20H62C67.523 20 72 24.477 72 30V66C72 71.523 67.523 76 62 76H34C28.477 76 24 71.523 24 66V30Z" fill="#EFF6FF"/>
+  <path d="M35 35H61M35 47H61M35 59H52" stroke="#2563EB" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="67" cy="68" r="11" fill="#60A5FA" stroke="#1f2937" stroke-width="4"/>
+</svg>
+`;
+}
+
+function chapterSvg(title, subtitle, labels) {
+  const safeTitle = title.replace(/&/g, '&amp;');
+  const safeSubtitle = subtitle.replace(/&/g, '&amp;');
+  const nodes = labels.map((label, index) => {
+    const x = 70 + index * 150;
+    const safeLabel = label.replace(/&/g, '&amp;');
+    const arrow = index < labels.length - 1
+      ? `<path d="M${x + 105} 220H${x + 135}" stroke="#2563EB" stroke-width="3" marker-end="url(#arrow)"/>`
+      : '';
+    return `<g>
+      <rect x="${x}" y="180" width="112" height="80" rx="16" fill="#EFF6FF" stroke="#93C5FD"/>
+      <text x="${x + 56}" y="226" text-anchor="middle" font-size="15" font-weight="700" fill="#1F2937">${safeLabel}</text>
+      ${arrow}
+    </g>`;
+  }).join('\n');
+  return `<svg width="960" height="360" viewBox="0 0 960 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0 0L8 4L0 8V0Z" fill="#2563EB"/>
+    </marker>
+  </defs>
+  <rect width="960" height="360" rx="28" fill="#F8FAFC"/>
+  <rect x="24" y="24" width="912" height="312" rx="24" fill="white" stroke="#E5E7EB"/>
+  <circle cx="82" cy="86" r="30" fill="#DBEAFE"/>
+  <path d="M70 86H94M82 74V98" stroke="#2563EB" stroke-width="5" stroke-linecap="round"/>
+  <text x="130" y="82" font-size="30" font-weight="800" fill="#111827">${safeTitle}</text>
+  <text x="130" y="116" font-size="17" fill="#64748B">${safeSubtitle}</text>
+  ${nodes}
+  <text x="70" y="306" font-size="14" fill="#64748B">信息优先 · 结构优先 · 机制导向</text>
+</svg>
+`;
+}
+
+function writeChapterVisuals() {
+  const visuals = [
+    ['00', '从 PostgreSQL 到智能数据系统', '全书路线不是工具清单，而是数据系统的演化路径', ['PG', 'SQL', '数仓', '批流', 'AI']],
+    ['01', 'PostgreSQL 建立数据库直觉', '先理解数据放在哪里，再理解如何查询和演化', ['Server', 'DB', 'Schema', 'Table', 'Row']],
+    ['02', 'SQL 分析能力阶梯', '从取数边界到指标口径的分析表达能力', ['查询', '聚合', 'JOIN', '窗口', '指标']],
+    ['03', '大表与单机边界', '用访问路径、预计算和分区理解分析压力', ['大表', '索引', '分区', '计划', '边界']],
+    ['04', 'OLTP 与 OLAP 分工', '业务正确和分析效率来自不同系统目标', ['交易', '一致', '扫描', '聚合', '分工']],
+    ['05', '从业务表到数仓模型', '把业务事实重构成可分析、可复用的语义层', ['ODS', 'DWD', 'DWS', 'ADS', '指标']]
+  ];
+  for (const [id, title, subtitle, labels] of visuals) {
+    write(path.join(siteDir, 'public', 'images', `chapter-${id}.svg`), chapterSvg(title, subtitle, labels));
+  }
+}
+
+ensureDir(chaptersDir);
+ensureDir(path.join(siteDir, '.vitepress', 'theme'));
+ensureDir(path.join(siteDir, 'public', 'images'));
+
+write(path.join(siteDir, 'index.md'), createIndex());
+write(path.join(siteDir, 'roadmap.md'), createRoadmap());
+write(path.join(siteDir, 'glossary.md'), createGlossary());
+write(path.join(siteDir, 'projects.md'), createProjects());
+write(path.join(siteDir, 'sql-lab.md'), createSqlLab());
+write(path.join(siteDir, 'sources.md'), createSourcesPage());
+write(path.join(siteDir, '.vitepress', 'config.ts'), createConfig());
+write(path.join(siteDir, '.vitepress', 'theme', 'index.ts'), createTheme());
+write(path.join(siteDir, '.vitepress', 'theme', 'Mermaid.vue'), createMermaidComponent());
+write(path.join(siteDir, '.vitepress', 'theme', 'custom.css'), createCss());
+write(path.join(siteDir, 'public', 'images', 'logo.svg'), createLogo());
+writeChapterVisuals();
+
+for (const chapter of chapters) {
+  write(path.join(chaptersDir, chapter.target), chapterPage(chapter));
+}
+
+console.log(`Generated ${chapters.length} chapters into site/`);

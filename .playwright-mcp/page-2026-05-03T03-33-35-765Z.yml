@@ -1,0 +1,176 @@
+- generic [ref=e3]:
+  - link "Skip to content" [ref=e4] [cursor=pointer]:
+    - /url: "#VPContent"
+  - banner:
+    - generic:
+      - generic:
+        - generic:
+          - link "数据库全书" [ref=e6] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e7]: 数据库全书
+          - generic [ref=e8]:
+            - button "Search" [ref=e11] [cursor=pointer]:
+              - generic [ref=e14]: Search
+              - generic [ref=e15]:
+                - generic [ref=e16]: ⌘
+                - generic [ref=e17]: K
+            - navigation "Main Navigation" [ref=e18]:
+              - generic [ref=e19]: Main Navigation
+              - link "开始阅读" [ref=e20] [cursor=pointer]:
+                - /url: /chapters/00-positioning
+                - generic [ref=e21]: 开始阅读
+              - link "路线图" [ref=e22] [cursor=pointer]:
+                - /url: /roadmap
+                - generic [ref=e23]: 路线图
+              - link "术语表" [ref=e24] [cursor=pointer]:
+                - /url: /glossary
+                - generic [ref=e25]: 术语表
+              - link "SQL 实验室" [ref=e26] [cursor=pointer]:
+                - /url: /sql-lab
+                - generic [ref=e27]: SQL 实验室
+              - link "项目实战" [ref=e28] [cursor=pointer]:
+                - /url: /projects
+                - generic [ref=e29]: 项目实战
+            - button "extra navigation" [ref=e31] [cursor=pointer]
+  - button "本页目录" [ref=e36] [cursor=pointer]: 本页目录
+  - complementary [ref=e38]:
+    - navigation "Sidebar Navigation" [ref=e40]:
+      - generic [ref=e41]: Sidebar Navigation
+      - generic [ref=e43]:
+        - button "数据库全书" [ref=e44]:
+          - heading "数据库全书" [level=2] [ref=e46]
+        - generic [ref=e47]:
+          - link "0. 核心定位" [ref=e51] [cursor=pointer]:
+            - /url: /chapters/00-positioning
+            - paragraph [ref=e52]: 0. 核心定位
+          - link "1. 数据库基础：用 PostgreSQL 建立数据系统直觉" [ref=e56] [cursor=pointer]:
+            - /url: /chapters/01-postgresql-foundations
+            - paragraph [ref=e57]: 1. 数据库基础：用 PostgreSQL 建立数据系统直觉
+          - link "2. SQL 分析能力：大数据方向第一硬技能" [ref=e61] [cursor=pointer]:
+            - /url: /chapters/02-sql-analysis
+            - paragraph [ref=e62]: 2. SQL 分析能力：大数据方向第一硬技能
+          - link "3. PostgreSQL 大表能力：理解单机数据库边界" [ref=e66] [cursor=pointer]:
+            - /url: /chapters/03-postgresql-large-tables
+            - paragraph [ref=e67]: 3. PostgreSQL 大表能力：理解单机数据库边界
+          - link "4. OLTP vs OLAP：大数据系统的第一分水岭" [ref=e71] [cursor=pointer]:
+            - /url: /chapters/04-oltp-olap
+            - paragraph [ref=e72]: 4. OLTP vs OLAP：大数据系统的第一分水岭
+          - link "5. 数据仓库建模：从表设计到分析建模" [ref=e76] [cursor=pointer]:
+            - /url: /chapters/05-data-warehouse-modeling
+            - paragraph [ref=e77]: 5. 数据仓库建模：从表设计到分析建模
+          - link "6. ETL / ELT：数据如何进入大数据系统" [ref=e81] [cursor=pointer]:
+            - /url: /chapters/06-etl-elt
+            - paragraph [ref=e82]: 6. ETL / ELT：数据如何进入大数据系统
+          - link "7. 批处理系统：Hive / Spark / Trino" [ref=e86] [cursor=pointer]:
+            - /url: /chapters/07-batch-processing
+            - paragraph [ref=e87]: 7. 批处理系统：Hive / Spark / Trino
+          - link "8. 实时数据处理：Kafka / Flink" [ref=e91] [cursor=pointer]:
+            - /url: /chapters/08-stream-processing
+            - paragraph [ref=e92]: 8. 实时数据处理：Kafka / Flink
+          - link "9. OLAP 数据库：ClickHouse / Doris / DuckDB" [ref=e96] [cursor=pointer]:
+            - /url: /chapters/09-olap-databases
+            - paragraph [ref=e97]: 9. OLAP 数据库：ClickHouse / Doris / DuckDB
+          - link "10. 向量数据库：面向 AI / RAG / 语义检索的数据系统" [ref=e101] [cursor=pointer]:
+            - /url: /chapters/10-vector-databases
+            - paragraph [ref=e102]: 10. 向量数据库：面向 AI / RAG / 语义检索的数据系统
+          - link "11. 图数据库：面向关系网络 / 知识图谱 / 路径分析的数据系统" [ref=e106] [cursor=pointer]:
+            - /url: /chapters/11-graph-databases
+            - paragraph [ref=e107]: 11. 图数据库：面向关系网络 / 知识图谱 / 路径分析的数据系统
+          - link "12. 数据湖与湖仓架构" [ref=e111] [cursor=pointer]:
+            - /url: /chapters/12-lakehouse
+            - paragraph [ref=e112]: 12. 数据湖与湖仓架构
+          - link "13. 数据治理与工程化" [ref=e116] [cursor=pointer]:
+            - /url: /chapters/13-data-governance
+            - paragraph [ref=e117]: 13. 数据治理与工程化
+          - link "14. 大数据方向项目实战" [ref=e121] [cursor=pointer]:
+            - /url: /chapters/14-projects
+            - paragraph [ref=e122]: 14. 大数据方向项目实战
+          - link "15. 推荐学习顺序" [ref=e126] [cursor=pointer]:
+            - /url: /chapters/15-learning-order
+            - paragraph [ref=e127]: 15. 推荐学习顺序
+          - link "16. 能力地图" [ref=e131] [cursor=pointer]:
+            - /url: /chapters/16-capability-map
+            - paragraph [ref=e132]: 16. 能力地图
+          - link "17. 最终学习目标" [ref=e136] [cursor=pointer]:
+            - /url: /chapters/17-final-goals
+            - paragraph [ref=e137]: 17. 最终学习目标
+      - generic [ref=e139]:
+        - button "辅助阅读" [ref=e140]:
+          - heading "辅助阅读" [level=2] [ref=e142]
+        - generic [ref=e143]:
+          - link "学习路线图" [ref=e147] [cursor=pointer]:
+            - /url: /roadmap
+            - paragraph [ref=e148]: 学习路线图
+          - link "术语表" [ref=e152] [cursor=pointer]:
+            - /url: /glossary
+            - paragraph [ref=e153]: 术语表
+          - link "SQL 实验室" [ref=e157] [cursor=pointer]:
+            - /url: /sql-lab
+            - paragraph [ref=e158]: SQL 实验室
+          - link "项目实战总览" [ref=e162] [cursor=pointer]:
+            - /url: /projects
+            - paragraph [ref=e163]: 项目实战总览
+          - link "事实核查与来源" [ref=e167] [cursor=pointer]:
+            - /url: /sources
+            - paragraph [ref=e168]: 事实核查与来源
+  - generic [ref=e173]:
+    - main [ref=e174]:
+      - generic [ref=e176]:
+        - heading "SQL 实验室 Permalink to \"SQL 实验室\"" [level=1] [ref=e177]:
+          - text: SQL 实验室
+          - link "Permalink to \"SQL 实验室\"" [ref=e178] [cursor=pointer]:
+            - /url: "#sql-实验室"
+            - text: "#"
+        - paragraph [ref=e179]: 这一页用于把书中的 SQL 示例从“可读”推进到“可运行”。
+        - heading "样例数据 Permalink to \"样例数据\"" [level=2] [ref=e180]:
+          - text: 样例数据
+          - link "Permalink to \"样例数据\"" [ref=e181] [cursor=pointer]:
+            - /url: "#样例数据"
+            - text: "#"
+        - list [ref=e182]:
+          - listitem [ref=e183]:
+            - text: PostgreSQL 建表与样例数据：
+            - link "examples/ecommerce-postgres.sql" [ref=e184] [cursor=pointer]:
+              - /url: /examples/ecommerce-postgres.sql
+          - listitem [ref=e185]:
+            - text: 第 2 章 SQL 查询练习：
+            - link "examples/chapter-02-queries.sql" [ref=e186] [cursor=pointer]:
+              - /url: /examples/chapter-02-queries.sql
+        - heading "建议运行方式 Permalink to \"建议运行方式\"" [level=2] [ref=e187]:
+          - text: 建议运行方式
+          - link "Permalink to \"建议运行方式\"" [ref=e188] [cursor=pointer]:
+            - /url: "#建议运行方式"
+            - text: "#"
+        - generic [ref=e189]:
+          - button "Copy Code" [ref=e190] [cursor=pointer]
+          - generic [ref=e191]: bash
+          - code [ref=e193]:
+            - generic [ref=e194]: createdb db_cookbook
+            - generic [ref=e195]: psql db_cookbook -f site/public/examples/ecommerce-postgres.sql
+            - generic [ref=e196]: psql db_cookbook -f site/public/examples/chapter-02-queries.sql
+          - generic [ref=e197]: 1 2 3
+        - heading "数据模型 Permalink to \"数据模型\"" [level=2] [ref=e198]:
+          - text: 数据模型
+          - link "Permalink to \"数据模型\"" [ref=e199] [cursor=pointer]:
+            - /url: "#数据模型"
+            - text: "#"
+        - heading "验收目标 Permalink to \"验收目标\"" [level=2] [ref=e201]:
+          - text: 验收目标
+          - link "Permalink to \"验收目标\"" [ref=e202] [cursor=pointer]:
+            - /url: "#验收目标"
+            - text: "#"
+        - list [ref=e203]:
+          - listitem [ref=e204]: 能跑通基础查询、聚合、JOIN、CTE、窗口函数和指标 SQL。
+          - listitem [ref=e205]: 能用同一套样例数据解释第 1-5 章中的表结构、指标口径和数仓建模。
+          - listitem [ref=e206]: 后续每章新增 SQL 示例时，都优先接入这套样例数据。
+    - contentinfo [ref=e207]:
+      - navigation "Pager" [ref=e208]:
+        - generic [ref=e209]: Pager
+        - link "上一章 术语表" [ref=e211] [cursor=pointer]:
+          - /url: /glossary
+          - generic [ref=e212]: 上一章
+          - generic [ref=e213]: 术语表
+        - link "下一章 项目实战总览" [ref=e215] [cursor=pointer]:
+          - /url: /projects
+          - generic [ref=e216]: 下一章
+          - generic [ref=e217]: 项目实战总览
