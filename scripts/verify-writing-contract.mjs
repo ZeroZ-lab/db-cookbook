@@ -24,37 +24,23 @@ const chapters = [
   'manuscript/chapter-17-final-goals.md'
 ];
 
-const contractChecks = [
-  {
-    name: 'solves-problem',
-    pattern: /解决|承担|负责|用于|为了/
-  },
-  {
-    name: 'does-not-solve-boundary',
-    pattern: /不解决|不能|无法|不适合|边界|代价|风险/
-  },
-  {
-    name: 'why-it-appears',
-    pattern: /为什么|出现|压力|问题|瓶颈|需求/
-  },
-  {
-    name: 'before-after-relation',
-    pattern: /上一章|下一章|承接|引出|前后|关系|演化|迁移|推进/
-  },
-  {
-    name: 'real-platform-position',
-    pattern: /真实平台|真实系统|数据平台|平台里|落地|工程/
-  },
-  {
-    name: 'verifiable-practice',
-    pattern: /实战任务|验证|运行|设计|记录|复盘/
-  }
-];
-
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function getSection(text, heading) {
+  const marker = `## ${heading}`;
+  const start = text.indexOf(marker);
+  if (start === -1) return '';
+  const contentStart = start + marker.length;
+  const rest = text.slice(contentStart);
+  const nextMarkerOffset = rest.search(/\n## /);
+  if (nextMarkerOffset === -1) {
+    return rest.trim();
+  }
+  return rest.slice(0, nextMarkerOffset).trim();
 }
 
 for (const chapter of chapters) {
@@ -62,9 +48,55 @@ for (const chapter of chapters) {
   assert(fs.existsSync(file), `Missing chapter: ${chapter}`);
   const text = fs.readFileSync(file, 'utf8');
 
-  for (const check of contractChecks) {
-    assert(check.pattern.test(text), `Missing writing contract signal ${check.name} in ${chapter}`);
-  }
+  const coreSection = getSection(text, '核心判断');
+  assert(
+    /(解决|承担|负责|作用|目标|入口|判断|问题|用于|帮助|让|用来)/.test(coreSection) || /(解决|承担|负责|作用|目标|入口|判断|问题|用于|帮助|让|用来)/.test(text),
+    `Missing solves-problem judgment in ${chapter}`
+  );
+  assert(
+    /(不解决|不能|无法|不适合|边界|代价|风险)/.test(coreSection) || /(不解决|不能|无法|不适合|边界|代价|风险)/.test(text),
+    `Missing explicit boundary in 核心判断 for ${chapter}`
+  );
+
+  const mechanismSection = getSection(text, '机制解释');
+  assert(
+    /(为什么|出现|压力|问题|瓶颈|需求)/.test(mechanismSection),
+    `Missing why-it-appears explanation in 机制解释 for ${chapter}`
+  );
+  assert(
+    (mechanismSection.match(/^### /gm) ?? []).length >= 3 || /#### 一、/.test(mechanismSection),
+    `机制解释 for ${chapter} must include structured sub-sections`
+  );
+
+  const systemSection = getSection(text, '系统位置');
+  assert(
+    /(上一章|下一章|承接|引出|前后|关系|演化|迁移)/.test(systemSection) || /(上一章|下一章|承接|引出|前后|关系|演化|迁移)/.test(text),
+    `Missing before-after relation in 系统位置 for ${chapter}`
+  );
+  assert(
+    /(真实平台|真实系统|数据平台|平台里|落地|工程)/.test(text),
+    `Missing real-platform position signal in ${chapter}`
+  );
+
+  const scenarioSection = getSection(text, '场景案例');
+  assert(
+    /```|\| .+ \||(\d+\. |- )/.test(scenarioSection),
+    `场景案例 for ${chapter} must include executable, tabular, or step-based structure`
+  );
+
+  const misconceptionSection = getSection(text, '常见误区');
+  assert(
+    /(误区|错|边界|后果|风险)/.test(misconceptionSection),
+    `Missing misconception or boundary language in 常见误区 for ${chapter}`
+  );
+
+  const taskSection = getSection(text, '实战任务');
+  assert(
+    /(验证|运行|设计|记录|复盘|观察|对比|回答|画)/.test(taskSection),
+    `Missing verifiable-practice language in 实战任务 for ${chapter}`
+  );
+
+  console.log(`${chapter}: ok`);
 }
 
 console.log('Writing contract coverage: ok');

@@ -35,25 +35,72 @@ const requiredHeadings = [
   '小结引出下一章'
 ];
 
-let hasFailure = false;
+const minimumSectionLengths = new Map([
+  ['核心判断', 60],
+  ['小结引出下一章', 20]
+]);
+
+function getSection(text, heading) {
+  const marker = `## ${heading}`;
+  const start = text.indexOf(marker);
+  if (start === -1) return '';
+  const contentStart = start + marker.length;
+  const rest = text.slice(contentStart);
+  const nextMarkerOffset = rest.search(/\n## /);
+  if (nextMarkerOffset === -1) {
+    return rest.trim();
+  }
+  return rest.slice(0, nextMarkerOffset).trim();
+}
+
+function countListItems(text) {
+  return text
+    .split('\n')
+    .filter((line) => /^(\d+\. |- |\* )/.test(line.trim()))
+    .length;
+}
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
 
 for (const chapter of chapters) {
   const file = path.join(root, chapter);
   const markdown = fs.readFileSync(file, 'utf8');
-  const missing = requiredHeadings.filter((heading) => {
-    const pattern = new RegExp(`^## ${heading}$`, 'm');
-    return !pattern.test(markdown);
-  });
 
-  if (missing.length > 0) {
-    hasFailure = true;
-    console.error(`${chapter}: missing ${missing.join(', ')}`);
-  } else {
-    console.log(`${chapter}: ok`);
+  for (const heading of requiredHeadings) {
+    assert(new RegExp(`^## ${heading}$`, 'm').test(markdown), `${chapter}: missing heading ${heading}`);
+    const section = getSection(markdown, heading);
+    const minLength = minimumSectionLengths.get(heading) ?? 80;
+    assert(section.length >= minLength, `${chapter}: section ${heading} is too short to be meaningful`);
   }
-}
 
-if (hasFailure) {
-  process.exit(1);
-}
+  assert(/\| .+ \|/.test(markdown), `${chapter}: missing markdown table`);
+  assert(markdown.includes('```'), `${chapter}: missing code block`);
 
+  const scenarioSection = getSection(markdown, '场景案例');
+  assert(
+    (/```/.test(scenarioSection) || /\| .+ \|/.test(scenarioSection) || countListItems(scenarioSection) >= 1),
+    `${chapter}: 场景案例 section must include structural evidence such as code, table, or steps`
+  );
+
+  const misconceptionSection = getSection(markdown, '常见误区');
+  const misconceptionCount = (misconceptionSection.match(/误区[一二三四五六七八九十]|\*\*误区/g) ?? []).length;
+  assert(misconceptionCount >= 3, `${chapter}: 常见误区 section must include at least 3 misconceptions`);
+
+  const taskSection = getSection(markdown, '实战任务');
+  assert(
+    countListItems(taskSection) >= 2 && /(观察|复盘|对比|验证|运行|设计|回答|画|检查|判断|定位|说明)/.test(taskSection),
+    `${chapter}: 实战任务 section must include steps plus validation signals`
+  );
+
+  const systemSection = getSection(markdown, '系统位置');
+  assert(
+    /(上一章|下一章|承接|引出|迁移|平台|链路|系统)/.test(systemSection) || /(上一章|下一章|承接|引出|迁移|平台|链路|系统)/.test(markdown),
+    `${chapter}: 系统位置 section must explain placement in the larger system`
+  );
+
+  console.log(`${chapter}: ok`);
+}

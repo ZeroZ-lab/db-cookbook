@@ -38,6 +38,15 @@ PostgreSQL 业务数据
   -> 指标与数据应用
 ```
 
+## 当前边界
+
+- 书稿已形成完整路线。
+- 自动验证已通过。
+- 项目实战大多仍是可检查骨架，不是端到端可运行工程。
+- 事实核查为初核，不是出版最终关闭。
+
+状态词汇和唯一状态源见 [完成口径规范](docs/status-language-contract.md)。
+
 ## 项目文档
 
 - [写作规范](docs/writing-guide.md)
@@ -45,13 +54,16 @@ PostgreSQL 业务数据
 - [章节模板](docs/chapter-template.md)
 - [书稿扩写与验收计划](docs/book-expansion-plan.md)
 - [完成审计](docs/completion-audit.md)
+- [完成口径规范](docs/status-language-contract.md)
 - [目标覆盖映射](docs/objective-coverage-map.md)
+- [章节可运行性覆盖表](docs/chapter-runtime-coverage.md)
 - [事实核查矩阵](docs/fact-check-matrix.md)
 - [事实核查证据台账](docs/fact-check-evidence.md)
 - [事实核查结构化 register](docs/fact-check-register.json)
 - [事实核查逐条记录](docs/fact-check-records/FC-001.md)
 - [来源笔记](docs/source-notes.md)
 - [技术编辑审核记录](docs/editorial-review.md)
+- [第 10-13 章出版级补强清单](docs/ai-chapters-editorial-plan.md)
 - [项目实战工作台](project-workbench/README.md)
 - [项目实战状态 manifest](project-workbench/project-manifest.json)
 

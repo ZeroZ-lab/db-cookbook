@@ -9,19 +9,15 @@ next: { text: "4. OLTP vs OLAP：大数据系统的第一分水岭", link: "/cha
 ::: tip 本章导读
 从分区、索引、物化视图和执行计划理解 PostgreSQL 如何支撑大表，以及边界在哪里。
 :::
+::: info 本章验收问题
+- 你能否区分索引、分区、物化视图分别解决什么问题？
+- 你能否判断一个慢查询是 SQL 写法问题还是单机边界问题？
+:::
+
 
 ![PostgreSQL 大表能力：理解单机数据库边界](/images/chapter-03.svg)
 
 
-## 本章阅读框架
-
-| 阅读问题 | 本章回答方式 |
-| --- | --- |
-| 这个问题为什么出现？ | 从业务增长、数据规模、系统目标或 AI 应用压力切入。 |
-| 它解决什么问题？ | 提炼为一个核心判断，避免把概念写成孤立定义。 |
-| 它不解决什么问题？ | 在机制解释和常见误区中说明边界，防止工具崇拜。 |
-| 它在真实平台哪里出现？ | 放回 PostgreSQL、数仓、批流、OLAP、湖仓、向量、图和治理的演化链路。 |
-| 读完要会做什么？ | 通过场景案例和实战任务转成可练习的判断。 |
 
 ```mermaid
 flowchart LR
@@ -61,7 +57,7 @@ flowchart LR
 
 > 大数据系统不是为了替代单机数据库而凭空出现，而是单机数据库在数据规模、分析负载和团队协作上遇到边界后的系统演化。
 
-本章要建立的判断是：PostgreSQL 可以通过索引、分区、物化视图、执行计划分析、批量导入导出和单机并行继续支撑相当多的大表场景，但这些机制都有明确代价和边界。
+单表到了几千万行就开始慢了？这一章不劝你立刻上分布式系统。PostgreSQL 的索引、分区、物化视图、并行查询能把单机能力推到远超多数人预期的程度。但每种机制都有代价——理解这些代价，你就知道什么时候单机真的不够了。
 
 它们解决的是单机数据库内部的访问路径、物理组织、预计算和资源利用问题，不解决长期历史分析、跨系统统一建模、低成本海量存储、多团队指标复用和分布式计算问题。正是这些未解决的问题，会在下一章引出 OLTP 与 OLAP 的分化。
 
@@ -101,588 +97,63 @@ flowchart LR
 日志表：每天1000万行 → 一个月3亿行
 ```
 
-当表越来越大，你会发现：
+当表越来越大，你会遇到三个现象。一是查询变慢，以前10万行只需0.1秒，现在1亿行需要30秒。二是索引可能失效，即使有索引优化器也可能选择全表扫描。三是存储和备份困难，表大小从100GB到1TB，备份时间从10分钟到2小时。
 
-**现象1**：查询变慢
-```sql
--- 以前：10万行，查询只需0.1秒
-SELECT count(*) FROM orders;
-
--- 现在：1亿行，查询需要30秒
-SELECT count(*) FROM orders;
-```
-
-**现象2**：索引失效
-```sql
--- 以前：索引查询很快
-SELECT * FROM orders WHERE user_id = 123;
-
--- 现在：即使有索引，查询还是很慢
--- 优化器选择全表扫描而不是索引扫描
-```
-
-**现象3**：存储和备份困难
-```sql
--- 表大小：100GB → 1TB
--- 备份时间：10分钟 → 2小时
--- 恢复时间：30分钟 → 6小时
-```
-
-**为什么大表会变慢？**
-
-是因为数据多吗？不完全是因为数据多，而是因为：
-- 数据库需要扫描更多数据
-- 索引变得庞大且低效
-- 内存装不下数据和索引
-- 磁盘I/O成为瓶颈
-
-理解大表为什么慢，是解决大表问题的第一步。
+大表变慢不完全是因为数据多，而是因为数据库需要扫描更多数据、索引变得庞大且低效、内存装不下数据和索引、磁盘I/O成为瓶颈。理解大表为什么慢，是解决大表问题的第一步。
 
 #### 一、为什么大表会变慢
 
-**第一，数据量增加导致扫描时间增长**
+数据量增加导致扫描时间增长。COUNT(*)需要扫描全表，时间与行数成正比——10万行0.1秒，100万行1秒，1000万行10秒，1亿行100秒。即使有索引，COUNT(*)也慢，因为`WHERE user_id = 123`能用索引直接定位，但`SELECT count(*) FROM orders`需要统计所有行，索引无法减少扫描量。
 
-**COUNT(*)查询的时间复杂度**：
-```sql
--- 10万行：0.1秒
--- 100万行：1秒
--- 1000万行：10秒
--- 1亿行：100秒
-```
+索引变得庞大且低效。索引大小随数据增长：10万行索引10MB，100万行100MB，1000万行1GB，1亿行10GB。索引太大时内存装不下，需要频繁磁盘I/O。B-Tree索引的查找成本随行数增长：10万行树高度3需3次I/O，1亿行树高度5需5次I/O。每次I/O约10ms，5次就是50ms。
 
-**原因**：
-- COUNT(*)需要扫描全表
-- 时间与行数成正比
-- 磁盘I/O是主要瓶颈
+内存不足导致频繁磁盘I/O。PostgreSQL的shared_buffers默认128MB，即使调到系统内存的25%，面对100GB的表也无法全部装入内存。理想场景下，表大小10GB、内存32GB时数据可缓存在内存；但表大小100GB、内存8GB时查询需要频繁磁盘I/O。
 
-**即使有索引，COUNT(*)也慢**：
-```sql
--- 创建索引
-CREATE INDEX idx_orders_user_id ON orders(user_id);
+锁竞争和并发问题加剧。删除一个月前的1000万行旧数据，执行时间长（可能数小时）、锁定表影响其他查询、产生大量WAL日志、导致表膨胀需要VACUUM回收空间。导入1亿行数据同样很慢，且索引维护成本高、影响其他查询。
 
--- 这个查询能使用索引（快）
-SELECT count(*) FROM orders WHERE user_id = 123;
+大表变慢的根本原因是：数据量增长导致磁盘I/O增加、内存不足、索引效率下降、锁竞争加剧。
 
--- 这个查询不能使用索引（慢）
-SELECT count(*) FROM orders;
-```
+#### 二、大表性能问题的本质
 
-**为什么？**
-- WHERE user_id = 123：索引直接定位到user_id=123的记录
-- COUNT(*)：需要统计所有行，索引无法减少扫描量
+大表慢不是因为数据量大，而是因为访问模式不适合数据规模。需要通过分区、索引、缓存、归档等手段提升访问效率。
 
-**第二，索引变得庞大且低效**
+磁盘I/O是主要瓶颈。顺序读取100-200 MB/s，随机读取1-5 MB/s，内存访问几GB/s。磁盘比内存慢100-1000倍。大表数据太大无法全部装入内存，查询时间主要由磁盘I/O决定。
 
-**索引大小增长**：
-```text
-10万行：索引10MB
-100万行：索引100MB
-1000万行：索引1GB
-1亿行：索引10GB
-```
+全表扫描（Seq Scan）从头到尾扫描整个表，适合返回大量数据（如表大小的5%以上）的场景。索引扫描（Index Scan）通过索引快速定位数据，适合只返回少量数据（如表大小的1%以下）的场景。但如果返回大量数据，索引扫描反而更慢，因为需要先读索引再读表数据。
 
-**问题**：
-- 索引太大，内存装不下
-- 需要频繁的磁盘I/O
-- 索引扫描变慢
+索引选择性也影响效果。user_id有100万个不同值，选择性高（90%的行都不同），适合索引。order_status只有5个不同值，选择性低（0.0005%），索引效果差，优化器可能选择全表扫描。
 
-**B-Tree索引的查找成本**：
-```
-10万行：树高度3，需要3次磁盘I/O
-1000万行：树高度4，需要4次磁盘I/O
-1亿行：树高度5，需要5次磁盘I/O
-```
+数据分布也有影响。数据倾斜时，大部分订单集中在少数用户，查询这些用户即使有索引也很慢（需要扫描百万行）。时间局部性意味着最近的数据经常被查询，如果通过分区实现，可以只扫描最近分区的数据而不是整个表。
 
-**每次I/O约10ms，5次I/O就是50ms，再加上数据扫描，查询就慢了。**
+#### 三、大表性能问题的分类
 
-**第三，内存不足导致频繁磁盘I/O**
+查询性能问题的症状是SELECT慢、执行时间长、资源占用高。原因在于全表扫描、索引不适用、数据量大、JOIN复杂。
 
-**PostgreSQL的共享缓冲区（shared_buffers）**：
-```yaml
-默认配置：128MB
-推荐配置：系统内存的25%
-大型服务器：8GB-32GB
-```
+写入性能问题的症状是INSERT/UPDATE/DELETE慢、锁等待。原因在于索引维护成本高、表锁竞争、WAL日志量大、磁盘I/O瓶颈。
 
-**问题场景**：
-```sql
--- 表大小：100GB
--- 内存：8GB
--- 查询需要扫描全表
--- 结果：频繁的磁盘I/O，查询很慢
-```
+维护性能问题的症状是VACUUM慢、备份慢、恢复慢、索引重建慢。原因在于表太大、死元组多、磁盘I/O瓶颈。
 
-**理想场景**：
-```sql
--- 表大小：10GB
--- 内存：32GB
--- 查询需要扫描全表
--- 结果：数据可以缓存在内存，查询较快
-```
+#### 四、大表性能优化思路
 
-**第四，锁竞争和并发问题**
+减少扫描的数据量。分区表按日期分区后，查询只扫描相关分区。时间归档将旧数据移到归档表。冷热分离：热数据是最近3个月频繁访问的，温数据是3-12个月偶尔访问的，冷数据是12个月以上很少访问的。
 
-**大表的更新和删除**：
-```sql
--- 删除一个月前的旧数据（1000万行）
-DELETE FROM events WHERE event_time < '2026-03-01';
+提升索引效率。创建合适的索引：单列索引、组合索引、部分索引（只索引已支付订单）。使用覆盖索引让查询只读索引不需要读表。
 
--- 问题：
--- 1. 执行时间长（可能需要数小时）
--- 2. 锁定表，影响其他查询
--- 3. 产生大量的WAL日志
--- 4. 表膨胀（需要VACUUM回收空间）
-```
+优化查询方式。尽早过滤，先过滤再JOIN而不是先JOIN再过滤。使用物化视图预计算常用的聚合结果。
 
-**大表的导入**：
-```sql
--- 导入1亿行数据
-COPY orders FROM 'orders.csv';
+硬件优化。增加内存（shared_buffers从8GB到32GB），使用SSD（随机读取比HDD快100倍），增加CPU（更多核心支持并行查询）。
 
--- 问题：
--- 1. 执行时间长
--- 2. 索引维护成本高
--- 3. 影响其他查询
-```
+#### 五、常见误区
 
-**结论**：
-> 大表变慢的根本原因是：数据量增长导致磁盘I/O增加、内存不足、索引效率下降、锁竞争加剧。
+**大表一定要分区。** 分区表有适用场景，不是所有大表都需要。不当分区导致性能更差。按时间范围查询适合分区，按ID查询不需要分区，数据量小于1000万行通常不需要分区。
 
-#### 二、核心判断：大表慢不是"数据多"而是"访问效率低"
+**索引越多越快。** 索引加速查询但降低写入速度。只为常用查询创建索引，定期清理无用索引，平衡查询和写入性能。
 
-> 大表性能问题的核心判断是：大表慢不是因为数据量大，而是因为访问模式不适合数据规模，需要通过分区、索引、缓存、归档等手段提升访问效率。
+**删除旧数据就能解决问题。** 删除数据只是暂时缓解，不解决根本。数据继续增长问题重复出现。需要建立数据归档策略，通过分区表管理数据生命周期。
 
-这个判断说明：
-- **数据量增长**：是业务发展的自然结果
-- **性能问题**：是访问模式不匹配导致的
-- **解决方案**：优化访问模式，而不是减少数据
-- **目标**：让查询只访问需要的数据
+**升级硬件就能解决。** 硬件升级能缓解问题但有成本和上限。先优化SQL和索引，再考虑分区和归档，最后才升级硬件。
 
-#### 三、大表性能问题的本质
-
-##### 3.1 磁盘I/O是主要瓶颈
-
-**磁盘I/O速度**：
-```
-顺序读取：100-200 MB/s
-随机读取：1-5 MB/s
-内存访问：几GB/s
-```
-
-**查询时间对比**：
-```sql
--- 内存中的数据（缓存命中）：0.1ms
--- 磁盘顺序读取：10ms
--- 磁盘随机读取：100ms
-```
-
-**差距**：磁盘比内存慢100-1000倍
-
-**大表的问题**：
-- 数据太大，无法全部装入内存
-- 需要频繁的磁盘I/O
-- 查询时间主要由磁盘I/O决定
-
-##### 3.2 全表扫描 vs 索引扫描
-
-**全表扫描（Seq Scan）**：
-```sql
--- 没有索引或索引不适用
-EXPLAIN SELECT * FROM orders WHERE total_amount > 1000;
-
--- 执行计划
-Seq Scan on orders  (cost=0.00..123456.78 rows=10000 width=200)
-  Filter: (total_amount > 1000)
-```
-
-**特点**：
-- 从头到尾扫描整个表
-- 适合：返回大量数据（如>表大小的5%）
-- 不适合：只返回少量数据
-
-**索引扫描（Index Scan）**：
-```sql
--- 有索引且适用
-EXPLAIN SELECT * FROM orders WHERE user_id = 123;
-
--- 执行计划
-Index Scan using idx_orders_user_id on orders  (cost=0.42..8.44 rows=100 width=200)
-  Index Cond: (user_id = 123)
-```
-
-**特点**：
-- 通过索引快速定位数据
-- 适合：只返回少量数据（如<表大小的1%）
-- 不适合：返回大量数据
-
-**索引扫描的代价**：
-- 需要先读索引（磁盘I/O）
-- 再读表数据（磁盘I/O）
-- 如果返回大量数据，索引扫描反而更慢
-
-##### 3.3 索引的选择性
-
-**索引选择性**：唯一值比例
-
-**高选择性**：
-```sql
--- user_id有100万个不同值
-SELECT count(DISTINCT user_id) / count(*) FROM orders;
--- 结果：0.9（90%的行都是不同的）
--- 适合索引
-```
-
-**低选择性**：
-```sql
--- order_status只有5个不同值
-SELECT count(DISTINCT order_status) / count(*) FROM orders;
--- 结果：0.000005（只有5个不同状态）
--- 不适合索引
-```
-
-**PostgreSQL的优化器决策**：
-```sql
--- 高选择性查询：使用索引
-SELECT * FROM orders WHERE user_id = 123;
--- 优化器认为只返回0.0001%的数据，用索引快
-
--- 低选择性查询：不使用索引
-SELECT * FROM orders WHERE order_status = 'paid';
--- 优化器认为返回50%的数据，全表扫描更快
-```
-
-##### 3.4 数据分布的影响
-
-**数据倾斜**：
-```sql
--- 大部分订单集中在少数用户
-user_id=1: 100万笔订单
-user_id=2: 50万笔订单
-user_id=3-1000000: 1笔订单
-
--- 查询user_id=1：很慢（即使有索引）
-SELECT * FROM orders WHERE user_id = 1;
--- 原因：需要扫描100万行，索引扫描不如全表扫描
-```
-
-**时间局部性**：
-```sql
--- 最近的数据经常被查询
-SELECT * FROM orders WHERE created_at >= CURRENT_DATE - INTERVAL '7 days';
-
--- 旧数据很少被查询
-SELECT * FROM orders WHERE created_at < '2020-01-01';
-```
-
-**如果分区，可以只扫描最近7天的分区，而不是整个表。**
-
-#### 四、大表性能问题的分类
-
-##### 4.1 查询性能问题
-
-**症状**：
-- SELECT查询慢
-- 执行时间长
-- 资源占用高
-
-**原因**：
-- 全表扫描
-- 索引不适用
-- 数据量大
-- JOIN复杂
-
-**示例**：
-```sql
--- 慢查询
-SELECT
-    u.user_id,
-    u.name,
-    o.order_id,
-    o.total_amount
-FROM users u
-JOIN orders o ON u.user_id = o.user_id
-WHERE o.created_at >= '2026-01-01';
--- 问题：需要扫描整个orders表
-```
-
-##### 4.2 写入性能问题
-
-**症状**：
-- INSERT慢
-- UPDATE慢
-- DELETE慢
-- 锁等待
-
-**原因**：
-- 索引维护成本高
-- 表锁竞争
-- WAL日志量大
-- 磁盘I/O瓶颈
-
-**示例**：
-```sql
--- 删除旧数据很慢
-DELETE FROM events WHERE event_time < '2026-01-01';
--- 问题：需要扫描全表，产生大量WAL，锁表
-```
-
-##### 4.3 维护性能问题
-
-**症状**：
-- VACUUM慢
-- 备份慢
-- 恢复慢
-- 索引重建慢
-
-**原因**：
-- 表太大
-- 死元组多
-- 磁盘I/O瓶颈
-
-**示例**：
-```sql
--- VACUUM FULL需要很长时间
-VACUUM FULL orders;
--- 问题：需要重写整个表，锁表
-```
-
-#### 五、大表性能优化思路
-
-##### 5.1 减少扫描的数据量
-
-**方法1：分区表**
-```sql
--- 按日期分区
-CREATE TABLE orders (
-    order_id BIGINT,
-    user_id BIGINT,
-    created_at TIMESTAMP
-) PARTITION BY RANGE (created_at);
-
--- 查询时只扫描相关分区
-SELECT * FROM orders WHERE created_at = '2026-04-01';
--- 只扫描2026-04-01的分区
-```
-
-**方法2：时间归档**
-```sql
--- 将旧数据移到归档表
-INSERT INTO orders_archive SELECT * FROM orders WHERE created_at < '2020-01-01';
-DELETE FROM orders WHERE created_at < '2020-01-01';
-```
-
-**方法3：冷热分离**
-```sql
--- 热数据：最近3个月（频繁访问）
--- 温数据：3-12个月（偶尔访问）
--- 冷数据：12个月以上（很少访问）
-```
-
-##### 5.2 提升索引效率
-
-**方法1：创建合适的索引**
-```sql
--- 单列索引
-CREATE INDEX idx_orders_user_id ON orders(user_id);
-
--- 组合索引
-CREATE INDEX idx_orders_user_date ON orders(user_id, created_at);
-
--- 部分索引
-CREATE INDEX idx_orders_paid ON orders(user_id) WHERE order_status = 'paid';
-```
-
-**方法2：使用覆盖索引**
-```sql
--- 索引包含查询需要的所有字段
-CREATE INDEX idx_orders_covering ON orders(user_id, total_amount, created_at);
-
--- 查询只需要读索引，不需要读表
-SELECT user_id, sum(total_amount)
-FROM orders
-WHERE user_id = 123
-GROUP BY user_id;
-```
-
-##### 5.3 优化查询方式
-
-**方法1：尽早过滤**
-```sql
--- 不好：先JOIN再过滤
-SELECT * FROM users u JOIN orders o ON u.user_id = o.user_id WHERE o.created_at >= '2026-01-01';
-
--- 好：先过滤再JOIN
-SELECT * FROM users u JOIN (
-    SELECT * FROM orders WHERE created_at >= '2026-01-01'
-) o ON u.user_id = o.user_id;
-```
-
-**方法2：使用物化视图**
-```sql
--- 预计算常用的聚合结果
-CREATE MATERIALIZED VIEW daily_gmv AS
-SELECT date(created_at) as order_date, sum(total_amount) as gmv
-FROM orders
-GROUP BY date(created_at);
-
--- 查询物化视图（快）
-SELECT * FROM daily_gmv WHERE order_date = '2026-04-01';
-```
-
-##### 5.4 硬件优化
-
-**方法1：增加内存**
-```yaml
--- shared_buffers：8GB → 32GB
--- effective_cache_size：24GB → 96GB
-```
-
-**方法2：使用SSD**
-```yaml
--- HDD：随机读取100 IOPS
--- SSD：随机读取10000 IOPS
--- 性能提升：100倍
-```
-
-**方法3：增加CPU**
-```yaml
--- 更多CPU核心 → 并行查询
-```
-
-#### 六、常见误区
-
-**误区一：大表一定要分区**
-
-- **说明**：分区表有适用场景，不是所有大表都需要分区
-- **后果**：不当分区导致性能更差
-- **正确理解**：
-  - 按时间范围查询：适合分区
-  - 按ID查询：不需要分区
-  - 数据量<1000万：通常不需要分区
-
-**误区二：索引越多越快**
-
-- **说明**：索引加速查询，但降低写入速度
-- **后果**：索引太多，写入慢，空间浪费
-- **正确理解**：
-  - 只为常用查询创建索引
-  - 定期清理无用索引
-  - 平衡查询和写入性能
-
-**误区三：删除旧数据就能解决问题**
-
-- **说明**：删除数据只是暂时缓解问题，不解决根本
-- **后果**：数据继续增长，问题重复出现
-- **正确理解**：
-  - 需要建立数据归档策略
-  - 需要分区表管理数据生命周期
-  - 需要从架构上解决
-
-**误区四：升级硬件就能解决**
-
-- **说明**：硬件升级能缓解问题，但有成本和上限
-- **后果**：硬件成本高，问题依然存在
-- **正确理解**：
-  - 先优化SQL和索引
-  - 再考虑分区和归档
-  - 最后才升级硬件
-
-**误区五：大表问题可以一次性解决**
-
-- **说明**：大表优化是持续工作，不是一次性项目
-- **后果**：优化后不再关注，性能再次恶化
-- **正确理解**：
-  - 定期监控表大小和查询性能
-  - 定期维护索引和统计信息
-  - 持续优化和迭代
-
-#### 七、实战任务
-
-**任务1：分析大表性能问题**
-
-给定orders表（1亿行），分析以下查询的性能问题：
-
-```sql
--- 查询1：统计订单总数
-SELECT count(*) FROM orders;
-
--- 查询2：查询某个用户的订单
-SELECT * FROM orders WHERE user_id = 123;
-
--- 查询3：查询某天的订单
-SELECT * FROM orders WHERE date(created_at) = '2026-04-01';
-
--- 查询4：统计每天GMV
-SELECT date(created_at), sum(total_amount) FROM orders GROUP BY date(created_at);
-```
-
-**分析步骤**：
-1. 使用EXPLAIN ANALYZE分析执行计划
-2. 识别全表扫描和索引扫描
-3. 找出性能瓶颈
-4. 提出优化建议
-
-**任务2：测试索引效果**
-
-创建索引前后的性能对比：
-
-```sql
--- 步骤1：查看表大小
-SELECT pg_size_pretty(pg_total_relation_size('orders'));
-
--- 步骤2：无索引查询
-EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 123;
-
--- 步骤3：创建索引
-CREATE INDEX idx_orders_user_id ON orders(user_id);
-
--- 步骤4：有索引查询
-EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 123;
-
--- 步骤5：对比执行时间和执行计划
-```
-
-**观察指标**：
-- 执行时间差异
-- 扫描行数差异
-- 使用了哪个索引
-
-**任务3：监控表增长**
-
-监控orders表的增长情况：
-
-```sql
--- 查询表大小
-SELECT
-    schemaname,
-    tablename,
-    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size,
-    pg_total_relation_size(schemaname||'.'||tablename) as size_bytes
-FROM pg_tables
-WHERE tablename = 'orders';
-
--- 查询行数
-SELECT count(*) FROM orders;
-
--- 查询最早和最晚的记录
-SELECT min(created_at), max(created_at) FROM orders;
-
--- 计算每天的数据增长量
-SELECT
-    date(created_at) as order_date,
-    count(*) as daily_rows
-FROM orders
-GROUP BY date(created_at)
-ORDER BY order_date DESC
-LIMIT 30;
-```
-
-**分析**：
-- 表增长速度如何？
-- 是否需要优化？
-- 何时需要考虑分区？
-
-#### 八、小结
+#### 六、小结
 
 大表变慢是业务发展的自然结果。
 
@@ -699,7 +170,7 @@ LIMIT 30;
 
 上一节讨论了大表为什么慢，核心问题是数据量增长导致的访问效率下降。
 
-但这引出一个更根本的问题：**PostgreSQL能处理多大规模的数据？**
+但这引出一个更根本的问题：PostgreSQL能处理多大规模的数据？
 
 ```text
 单表1亿行：PostgreSQL能处理吗？
@@ -709,106 +180,21 @@ LIMIT 30;
 并发10000 QPS：PostgreSQL能处理吗？
 ```
 
-**答案是：看场景。**
-
-有些场景PostgreSQL能轻松应对，有些场景则超出PostgreSQL的能力边界。
-
-理解PostgreSQL的能力边界，才能：
-- 选择合适的场景使用PostgreSQL
-- 知道何时需要其他方案（如分库分表、OLAP数据库）
-- 避免过度设计或欠设计
+答案是：看场景。有些场景PostgreSQL能轻松应对，有些场景则超出PostgreSQL的能力边界。理解PostgreSQL的能力边界，才能选择合适的场景使用它，知道何时需要其他方案（如分库分表、OLAP数据库），避免过度设计或欠设计。
 
 #### 一、为什么需要理解边界
 
-**第一，避免过度设计**
+避免过度设计。创业公司的订单系统当前数据量只有100万行，PostgreSQL单机完全够用。但有人担心将来数据量太大，设计了分库分表加Redis加消息队列的复杂架构，开发复杂度增加、维护成本高，而实际数据量远未达到需要这些方案的规模。合理设计应该是PostgreSQL单机，开发简单、维护成本低、性能足够、未来可扩展。
 
-**场景**：创业公司的订单系统
+避免欠设计。用户行为分析系统每天1亿行事件数据，如果用PostgreSQL单机，一年后365亿行数据会让查询从秒级变成小时级，存储成本高，不适合分析场景。合理设计应该是ClickHouse集群，分析场景、数据量大、需要快速聚合查询。查询快到秒级，压缩比高存储成本低，适合分析场景。
 
-**过度设计**：
-```yaml
-架构：分库分表 + Redis + 消息队列
-理由：担心将来数据量太大
-问题：
-  - 开发复杂度增加
-  - 维护成本高
-  - 实际数据量只有100万行
-  - PostgreSQL单机完全够用
-```
+知道何时升级。PostgreSQL能应对的阶段是数据量小于10亿行、并发小于1000 QPS、OLTP事务处理场景。需要升级的阶段是数据量大于10亿行、并发大于1000 QPS、OLAP分析查询场景，这时需要分库分表或OLAP数据库。
 
-**合理设计**：
-```yaml
-架构：PostgreSQL单机
-理由：当前数据量100万行，PostgreSQL轻松应对
-好处：
-  - 开发简单
-  - 维护成本低
-  - 性能足够
-  - 未来可以扩展
-```
+理解PostgreSQL的能力边界，是为了在合适的场景使用合适的工具，避免过度设计和欠设计。
 
-**第二，避免欠设计**
+#### 二、PostgreSQL的能力边界
 
-**场景**：用户行为分析系统，每天1亿行事件数据
-
-**欠设计**：
-```yaml
-架构：PostgreSQL单机
-理由：简单
-问题：
-  - 一年后数据量365亿行
-  - 查询很慢（几分钟到几小时）
-  - 存储成本高
-  - 不适合分析场景
-```
-
-**合理设计**：
-```yaml
-架构：ClickHouse集群
-理由：
-  - 分析场景（不是事务场景）
-  - 数据量大（每天1亿行）
-  - 需要快速聚合查询
-好处：
-  - 查询快（秒级）
-  - 压缩比高（存储成本低）
-  - 适合分析场景
-```
-
-**第三，知道何时升级**
-
-**PostgreSQL能应对的阶段**：
-```yaml
-数据量：< 10亿行
-并发：< 1000 QPS
-场景：OLTP（事务处理）
-```
-
-**需要升级的阶段**：
-```yaml
-数据量：> 10亿行
-并发：> 1000 QPS
-场景：OLAP（分析查询）
-→ 需要分库分表或OLAP数据库
-```
-
-**结论**：
-> 理解PostgreSQL的能力边界，是为了在合适的场景使用合适的工具，避免过度设计和欠设计。
-
-#### 二、核心判断：PostgreSQL不是万能的，但有明确的适用边界
-
-> PostgreSQL单机边界的核心判断是：PostgreSQL擅长OLTP（事务处理）和轻量级OLAP（分析查询），但当数据量或并发超过一定阈值时，需要分库分表或迁移到专用系统。
-
-这个判断说明：
-- **擅长**：OLTP、轻量级分析
-- **边界**：数据量、并发、场景
-- **扩展**：分库分表、迁移到专用系统
-- **判断**：根据实际需求和规模选择
-
-#### 三、PostgreSQL的能力边界
-
-##### 3.1 数据量边界
-
-**单表规模**：
+**单表规模边界：**
 
 | 规模 | 行数 | 大小 | 性能 | 建议 |
 |------|------|------|------|------|
@@ -817,7 +203,7 @@ LIMIT 30;
 | 大表 | 1000万-1亿 | 10GB-100GB | 秒级到分钟级 | 需要分区 |
 | 超大表 | > 1亿 | > 100GB | 分钟级以上 | 考虑分库分表 |
 
-**总数据量**：
+**总数据量边界：**
 
 | 规模 | 大小 | 性能 | 建议 |
 |------|------|------|------|
@@ -826,24 +212,9 @@ LIMIT 30;
 | 大型 | 1TB-10TB | 秒级到分钟级 | 考虑分库分表 |
 | 超大型 | > 10TB | 分钟级以上 | 需要专用系统 |
 
-**示例**：
-```sql
--- 场景1：订单表（5000万行，20GB）
--- 结论：PostgreSQL单机可以应对
--- 建议：创建索引，考虑按日期分区
+具体场景判断：订单表5000万行20GB，PostgreSQL单机可以应对，建议创建索引、考虑按日期分区。事件表每天1亿行每天30GB，PostgreSQL单机不适合，建议使用ClickHouse等OLAP数据库。日志表每天10亿行每天300GB，PostgreSQL完全不适合，建议使用Elasticsearch或日志系统。
 
--- 场景2：事件表（每天1亿行，每天30GB）
--- 结论：PostgreSQL单机不适合
--- 建议：使用ClickHouse等OLAP数据库
-
--- 场景3：日志表（每天10亿行，每天300GB）
--- 结论：PostgreSQL完全不适合
--- 建议：使用Elasticsearch或日志系统
-```
-
-##### 3.2 并发边界
-
-**QPS（Query Per Second）**：
+**并发边界：**
 
 | 并发级别 | QPS | 响应时间 | 建议 |
 |---------|-----|----------|------|
@@ -852,519 +223,46 @@ LIMIT 30;
 | 高并发 | 1000-10000 | 秒级 | 需要读写分离、缓存 |
 | 超高并发 | > 10000 | 秒级到分钟级 | 需要分库分表 |
 
-**示例**：
-```yaml
-# 场景1：内部系统（100 QPS）
-架构：PostgreSQL单机
-优化：索引优化、连接池
-结果：轻松应对
-
-# 场景2：Web应用（1000 QPS）
-架构：PostgreSQL主从 + Redis
-优化：读写分离、缓存
-结果：可以应对
-
-# 场景3：高并发API（10000 QPS）
-架构：分库分表 + Redis集群
-优化：分片、缓存、消息队列
-结果：需要专业架构
-```
-
-##### 3.3 场景边界
-
-**OLTP（Online Transaction Processing）**：
-```yaml
-特点：
-  - 事务性要求高（ACID）
-  - 单次查询涉及少量数据
-  - 并发写入多
-
-示例：
-  - 订单系统
-  - 支付系统
-  - 库存系统
-
-PostgreSQL：✅ 擅长
-原因：支持完整的ACID事务，行级锁
-```
-
-**OLAP（Online Analytical Processing）**：
-```yaml
-特点：
-  - 分析查询为主
-  - 单次查询涉及大量数据
-  - 聚合计算多
-
-示例：
-  - 用户行为分析
-  - 销售数据分析
-  - 留存分析
-
-PostgreSQL：🟡 可以，但不擅长
-原因：
-  - 行式存储不适合分析
-  - 聚合查询慢
-  - 需要：分区表、物化视图、列式存储扩展
-```
-
-**混合场景**：
-```yaml
-特点：
-  - 同时有OLTP和OLAP需求
-
-解决方案：
-  - PostgreSQL做OLTP
-  - ClickHouse/Doris做OLAP
-  - 通过ETL同步数据
-```
-
-#### 四、PostgreSQL的优势场景
-
-##### 4.1 事务处理（OLTP）
-
-**场景**：电商订单系统
-
-```sql
--- 创建订单（事务）
-BEGIN;
-INSERT INTO orders (order_id, user_id, total_amount) VALUES (1, 123, 100);
-UPDATE inventory SET stock = stock - 1 WHERE product_id = 456;
-UPDATE users SET balance = balance - 100 WHERE user_id = 123;
-COMMIT;
-```
-
-**PostgreSQL优势**：
-- ✅ 完整的ACID事务支持
-- ✅ 行级锁，并发性能好
-- ✅ MVCC（多版本并发控制）
-- ✅ 外键约束保证数据一致性
-
-##### 4.2 复杂查询
-
-**场景**：用户行为分析
-
-```sql
--- 复杂的关联查询
-WITH user_orders AS (
-    SELECT user_id, count(*) as order_count, sum(total_amount) as total_amount
-    FROM orders
-    WHERE order_status = 'paid'
-    GROUP BY user_id
-),
-user_events AS (
-    SELECT user_id, count(*) as event_count
-    FROM events
-    WHERE event_time >= CURRENT_DATE - INTERVAL '30 days'
-    GROUP BY user_id
-)
-SELECT
-    u.user_id,
-    u.name,
-    coalesce(o.order_count, 0) as order_count,
-    coalesce(o.total_amount, 0) as total_amount,
-    coalesce(e.event_count, 0) as event_count
-FROM users u
-LEFT JOIN user_orders o ON u.user_id = o.user_id
-LEFT JOIN user_events e ON u.user_id = e.user_id;
-```
-
-**PostgreSQL优势**：
-- ✅ 强大的SQL支持（CTE、窗口函数）
-- ✅ 丰富的数据类型（JSON、数组）
-- ✅ 复杂JOIN优化器
-
-##### 4.3 地理信息（PostGIS）
-
-**场景**：附近的人
-
-```sql
--- 查询附近的店铺
-SELECT name, address
-FROM shops
-WHERE ST_DWithin(
-    location,
-    ST_MakePoint(121.4737, 31.2304)::geography,
-    1000  -- 1km范围
-);
-```
-
-**PostgreSQL优势**：
-- ✅ PostGIS扩展
-- ✅ 地理索引（GiST）
-- ✅ 空间查询优化
-
-##### 4.4 全文搜索
-
-**场景**：文章搜索
-
-```sql
--- 全文搜索
-SELECT title, content
-FROM articles
-WHERE to_tsvector('chinese', title || ' ' || content) @@ to_tsquery('chinese', 'PostgreSQL');
-```
-
-**PostgreSQL优势**：
-- ✅ 内置全文搜索
-- ✅ 支持中文分词
-- ✅ Gin索引加速
-
-#### 五、PostgreSQL的劣势场景
-
-##### 5.1 大规模数据分析
-
-**场景**：每天1亿行事件数据的分析
-
-```sql
--- 这个查询在PostgreSQL上可能需要几分钟
-SELECT
-    date(event_time) as event_date,
-    count(*) as event_count,
-    count(DISTINCT user_id) as unique_users
-FROM events
-WHERE event_time >= CURRENT_DATE - INTERVAL '30 days'
-GROUP BY date(event_time);
-```
-
-**PostgreSQL劣势**：
-- ❌ 行式存储不适合分析
-- ❌ 聚合查询慢
-- ❌ 压缩比低
-
-**建议**：使用ClickHouse、Doris等OLAP数据库
-
-##### 5.2 超高并发写入
-
-**场景**：每秒10000次写入
-
-```sql
--- 每秒10000次INSERT
-INSERT INTO events (user_id, event_name, event_time) VALUES (?, ?, ?);
-```
-
-**PostgreSQL劣势**：
-- ❌ 单机写入能力有限（几千TPS）
-- ❌ 需要分库分表
-
-**建议**：
-- 分库分表
-- 使用Kafka等消息队列缓冲
-- 使用时序数据库（InfluxDB、TimescaleDB）
-
-##### 5.3 海量数据存储
-
-**场景**：PB级数据存储
-
-**PostgreSQL劣势**：
-- ❌ 单机存储上限（几十TB）
-- ❌ 成本高
-
-**建议**：
-- 数据归档
-- 使用对象存储（S3、OSS）
-- 使用数据湖
-
-#### 六、何时需要分库分表
-
-##### 6.1 分库分表的信号
-
-**数据量信号**：
-```yaml
-单表超过1亿行
-单表超过100GB
-总数据量超过1TB
-→ 考虑分库分表
-```
-
-**性能信号**：
-```yaml
-查询时间超过10秒
-索引无法优化
-数据库连接数不够
-→ 考虑分库分表
-```
-
-**并发信号**：
-```yaml
-QPS超过5000
-主从复制延迟
-锁等待严重
-→ 考虑分库分表
-```
-
-##### 6.2 分库分表的方案
-
-**垂直分库（按业务）**：
-```yaml
-# 原来的架构
-一个数据库：users + orders + products + payments
-
-# 垂直分库后
-数据库1：users（用户库）
-数据库2：orders（订单库）
-数据库3：products（商品库）
-数据库4：payments（支付库）
-
-优点：
-  - 业务隔离
-  - 便于扩展
-  - 降低单库压力
-```
-
-**水平分表（按数据量）**：
-```yaml
-# 原来的架构
-一个表：orders（1亿行）
-
-# 水平分表后
-表1：orders_0（1000万行）
-表2：orders_1（1000万行）
-表3：orders_2（1000万行）
-表4：orders_3（1000万行）
-...
-
-分片规则：user_id % 10
-
-优点：
-  - 单表数据量可控
-  - 查询性能提升
-  - 便于扩展
-```
-
-**分库分表的挑战**：
-```yaml
-挑战1：分布式事务
-  → 解决：最终一致性、补偿机制
-
-挑战2：跨库JOIN
-  → 解决：应用层JOIN、数据冗余
-
-挑战3：数据迁移
-  → 解决：双写、在线迁移
-```
-
-#### 七、何时需要迁移到专用系统
-
-##### 7.1 迁移到OLAP数据库
-
-**信号**：
-```yaml
-分析查询慢（>10秒）
-聚合查询多
-数据量大（>10亿行）
-→ 考虑迁移到ClickHouse/Doris/BigQuery
-```
-
-**方案**：
-```yaml
-PostgreSQL：继续处理OLTP（订单、用户）
-ClickHouse：处理OLAP（用户行为分析、报表）
-通过ETL同步数据
-```
-
-##### 7.2 迁移到缓存系统
-
-**信号**：
-```yaml
-热点数据查询频繁
-实时性要求高（<10ms）
-→ 考虑使用Redis
-```
-
-**方案**：
-```yaml
-Redis：缓存热点数据（用户信息、商品信息）
-PostgreSQL：持久化存储
-```
-
-##### 7.3 迁移到搜索引擎
-
-**信号**：
-```yaml
-全文搜索需求复杂
-模糊搜索、相关性排序
-→ 考虑使用Elasticsearch
-```
-
-**方案**：
-```yaml
-Elasticsearch：全文搜索
-PostgreSQL：结构化数据存储
-```
-
-#### 八、常见误区
-
-**误区一：PostgreSQL能处理所有场景**
-
-- **说明**：PostgreSQL是通用数据库，但不是所有场景的最优选择
-- **后果**：在不适合的场景强行使用PostgreSQL，性能差、成本高
-- **正确理解**：
-  - PostgreSQL擅长OLTP和轻量级OLAP
-  - 大规模分析考虑OLAP数据库
-  - 超高并发考虑分库分表
-
-**误区二：数据量大了就一定要分库分表**
-
-- **说明**：分库分表是手段，不是目的，要看场景
-- **后果**：过度设计，增加复杂度
-- **正确理解**：
-  - <1亿行：通常不需要分库分表
-  - 1-10亿行：考虑分区表
-  - >10亿行：考虑分库分表
-
-**误区三：PostgreSQL不适合分析查询**
-
-- **说明**：PostgreSQL可以做分析查询，但不是最优选择
-- **后果**：完全不用PostgreSQL做分析，浪费其能力
-- **正确理解**：
-  - 轻量级分析（<1000万行）：PostgreSQL够用
-  - 中等规模分析（1000万-1亿行）：PostgreSQL + 物化视图
-  - 大规模分析（>1亿行）：考虑OLAP数据库
-
-**误区四：迁移到其他系统很难**
-
-- **说明**：迁移有成本，但不是不可行
-- **后果**：不敢迁移，继续在不适用的场景挣扎
-- **正确理解**：
-  - 迁移前做好规划
-  - 分阶段迁移
-  - 双写保证数据一致性
-  - 工具支持迁移
-
-**误区五：单机一定比集群差**
-
-- **说明**：单机有优势，集群不是万能的
-- **后果**：盲目上集群，增加复杂度
-- **正确理解**：
-  - 小规模（<100GB）：单机更简单
-  - 中规模（100GB-1TB）：单机 + 分区
-  - 大规模（>1TB）：考虑集群
-
-#### 九、实战任务
-
-**任务1：评估PostgreSQL是否适合**
-
-评估以下场景是否适合使用PostgreSQL：
-
-**场景1**：博客系统
-```yaml
-数据量：文章10万篇，评论100万条
-并发：100 QPS
-需求：发布文章、评论、点赞
-```
-
-**评估**：
-- ✅ 适合PostgreSQL
-- 原因：数据量小，并发低，OLTP场景
-
-**场景2**：用户行为分析
-```yaml
-数据量：每天1亿行事件数据
-并发：50个分析查询/小时
-需求：分析用户行为、留存、转化
-```
-
-**评估**：
-- ❌ 不适合PostgreSQL
-- 原因：分析场景，数据量大
-- 建议：使用ClickHouse
-
-**场景3**：订单系统
-```yaml
-数据量：订单5000万笔
-并发：1000 QPS
-需求：下单、支付、退款
-```
-
-**评估**：
-- ✅ 适合PostgreSQL
-- 原因：OLTP场景，数据量可控
-- 优化：创建索引，考虑主从复制
-
-**任务2：监控PostgreSQL性能**
-
-监控以下指标，判断是否需要优化：
-
-```sql
--- 1. 查看表大小
-SELECT
-    schemaname,
-    tablename,
-    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
-FROM pg_tables
-ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
-LIMIT 10;
-
--- 2. 查看慢查询
-SELECT
-    query,
-    calls,
-    mean_exec_time,
-    max_exec_time
-FROM pg_stat_statements
-ORDER BY mean_exec_time DESC
-LIMIT 10;
-
--- 3. 查看数据库连接数
-SELECT count(*) FROM pg_stat_activity;
-
--- 4. 查看锁等待
-SELECT * FROM pg_stat_activity WHERE wait_event_type = 'Lock';
-
--- 5. 查看缓存命中率
-SELECT
-    sum(blks_hit) / (sum(blks_hit) + sum(blks_read)) as cache_hit_ratio
-FROM pg_stat_database;
-```
-
-**分析**：
-- 表大小是否超过100GB？
-- 是否有慢查询（>10秒）？
-- 连接数是否接近上限？
-- 锁等待是否严重？
-- 缓存命中率是否低于95%？
-
-**任务3：制定扩展方案**
-
-给定以下场景，制定扩展方案：
-
-**场景**：电商系统
-```yaml
-当前状态：
-  - 订单表：5000万行（50GB）
-  - 用户行为表：每天1000万行（每天3GB）
-  - QPS：500
-
-预期增长：
-  - 一年后：订单表2亿行，用户行为表每天3000万行
-  - QPS：2000
-```
-
-**扩展方案**：
-```yaml
-订单表（OLTP）：
-  - 当前：PostgreSQL单机
-  - 优化：创建索引、主从复制
-  - 未来：考虑按用户ID分片
-
-用户行为表（OLAP）：
-  - 当前：PostgreSQL单机
-  - 问题：聚合查询慢
-  - 建议：迁移到ClickHouse
-
-缓存：
-  - 热点数据：用户信息、商品信息
-  - 方案：Redis缓存
-```
-
-#### 十、小结
+**场景边界：** PostgreSQL擅长OLTP（事务处理），支持完整ACID事务和行级锁，适合订单系统、支付系统、库存系统。PostgreSQL可以做OLAP（分析查询）但不擅长，行式存储不适合分析、聚合查询慢。混合场景的最佳实践是PostgreSQL做OLTP、ClickHouse/Doris做OLAP，通过ETL同步数据。
+
+#### 三、PostgreSQL的优势场景
+
+事务处理（OLTP）方面，PostgreSQL支持完整ACID事务、行级锁、MVCC多版本并发控制、外键约束保证数据一致性。复杂查询方面，支持CTE、窗口函数、丰富的数据类型（JSON、数组）、复杂JOIN优化器。地理信息方面，通过PostGIS扩展支持地理索引（GiST）和空间查询优化。全文搜索方面，内置全文搜索支持中文分词和Gin索引加速。
+
+#### 四、PostgreSQL的劣势场景
+
+大规模数据分析：行式存储不适合分析，聚合查询慢，压缩比低。每天1亿行事件数据的分析在PostgreSQL上可能需要几分钟，建议使用ClickHouse、Doris等OLAP数据库。
+
+超高并发写入：单机写入能力有限（几千TPS），每秒10000次INSERT需要分库分表、使用Kafka等消息队列缓冲。
+
+海量数据存储：单机存储上限几十TB、成本高，PB级数据存储建议数据归档到对象存储（S3、OSS）或数据湖。
+
+#### 五、何时需要分库分表
+
+分库分表的信号：数据量方面，单表超过1亿行、单表超过100GB、总数据量超过1TB时考虑。性能方面，查询时间超过10秒、索引无法优化、数据库连接数不够时考虑。并发方面，QPS超过5000、主从复制延迟、锁等待严重时考虑。
+
+垂直分库按业务拆分：一个数据库包含users、orders、products、payments，拆分成四个数据库各管一个业务。优点是业务隔离、便于扩展、降低单库压力。
+
+水平分表按数据量拆分：一个orders表1亿行分成多个表各1000万行，分片规则如user_id % 10。优点是单表数据量可控、查询性能提升、便于扩展。
+
+分库分表的挑战包括：分布式事务（需要最终一致性和补偿机制）、跨库JOIN（需要应用层JOIN或数据冗余）、数据迁移（需要双写和在线迁移）。
+
+#### 六、常见误区
+
+**PostgreSQL能处理所有场景。** PostgreSQL是通用数据库但不是所有场景的最优选择。大规模分析考虑OLAP数据库，超高并发考虑分库分表。
+
+**数据量大了就一定要分库分表。** 分库分表是手段不是目的。1亿行以内通常不需要，1-10亿行考虑分区表，10亿行以上考虑分库分表。
+
+**单机一定比集群差。** 小规模（小于100GB）单机更简单，中规模（100GB-1TB）单机加分区，大规模（大于1TB）才考虑集群。
+
+#### 七、小结
 
 PostgreSQL不是万能的，但有明确的适用边界。
 
 核心要点：
 - PostgreSQL擅长OLTP和轻量级OLAP
-- 数据量边界：单表<1亿行，总数据量<1TB
-- 并发边界：QPS<1000
+- 数据量边界：单表小于1亿行，总数据量小于1TB
+- 并发边界：QPS小于1000
 - 超出边界：考虑分库分表或专用系统
 - 分库分表有成本，要权衡
 - 迁移到专用系统要规划
@@ -1373,15 +271,9 @@ PostgreSQL不是万能的，但有明确的适用边界。
 
 ### 3.3 分区表：让大表具有物理边界
 
-前两节讨论了大表为什么慢，以及PostgreSQL的能力边界。
+前两节讨论了大表为什么慢，以及PostgreSQL的能力边界。结论之一是：当数据量增长时，需要优化访问模式。优化访问模式的一个核心手段是分区表（Partitioning）。
 
-结论之一是：**当数据量增长时，需要优化访问模式**。
-
-优化访问模式的一个核心手段是：**分区表（Partitioning）**。
-
-**什么是分区表？**
-
-简单说，就是把一个大表物理上拆分成多个小表，但逻辑上还是一个大表。
+分区表就是把一个大表物理上拆分成多个小表，但逻辑上还是一个大表。
 
 ```sql
 -- 不分区：一个大表orders（1亿行）
@@ -1393,111 +285,23 @@ SELECT * FROM orders WHERE date(created_at) = '2026-04-01';
 -- 只扫描4月的分区（800万行）
 ```
 
-**分区表的价值**：
-- **查询优化**：只扫描相关分区，减少I/O
-- **维护便利**：可以单独删除、备份、恢复某个分区
-- **扩展性**：可以在不同分区使用不同存储策略
+分区表的价值：查询优化（只扫描相关分区，减少I/O）、维护便利（可以单独删除、备份、恢复某个分区）、扩展性（可以在不同分区使用不同存储策略）。
 
 #### 一、为什么需要分区表
 
-**第一，按时间查询是大表的常见场景**
+按时间查询是大表的常见场景。查询今天的订单、本月的订单、去年的订单，即使有索引也可能需要扫描大量数据。如果按月分区，查询今天的订单只扫描当前月的分区。
 
-**场景**：订单查询
+数据生命周期管理需要物理边界。不分区时，删除一年前的日志需要扫描全表数十亿行、产生大量WAL日志、锁表时间长、需要VACUUM回收空间。按月分区后，直接`DROP TABLE events_202504`，不产生WAL日志、不锁表、不需要VACUUM。
+
+不同时间的数据有不同访问模式。最近3个月频繁访问（热数据），3-12个月偶尔访问（温数据），12个月以上很少访问（冷数据）。分区后可以将热数据放在SSD、分配更多内存和索引，冷数据放在HDD、压缩存储、较少索引。
+
+分区表的价值在于：通过物理边界，让查询、维护、存储优化成为可能。
+
+#### 二、分区表的类型
+
+**RANGE分区（范围分区）：** 按时间、ID范围等有序字段分区，最常用的是按月分区。
+
 ```sql
--- 查询今天的订单
-SELECT * FROM orders WHERE date(created_at) = CURRENT_DATE;
-
--- 查询本月的订单
-SELECT * FROM orders
-WHERE created_at >= date_trunc('month', CURRENT_DATE);
-
--- 查询去年的订单
-SELECT * FROM orders
-WHERE created_at >= '2025-01-01' AND created_at < '2026-01-01';
-```
-
-**问题**：
-- 即使有索引，也可能需要扫描大量数据
-- 索引维护成本高
-- 删除旧数据需要扫描全表
-
-**如果按月分区**：
-```sql
--- 查询今天的订单：只扫描当前月的分区
--- 查询本月的订单：只扫描当前月的分区
--- 查询去年的订单：只扫描去年12个分区
-```
-
-**第二，数据生命周期管理需要物理边界**
-
-**场景**：日志数据归档
-
-**不分区**：
-```sql
--- 删除一年前的日志（需要扫描全表）
-DELETE FROM events WHERE event_time < CURRENT_DATE - INTERVAL '1 year';
--- 问题：
---   1. 需要扫描全表（数十亿行）
---   2. 产生大量的WAL日志
---   3. 锁表时间长
---   4. 需要VACUUM回收空间
-```
-
-**按月分区**：
-```sql
--- 删除一年前的日志（直接DROP分区）
-DROP TABLE events_202504;
--- 优势：
---   1. 直接删除分区文件，不需要扫描数据
---   2. 不产生WAL日志
---   3. 不锁表（只锁分区）
---   4. 不需要VACUUM
-```
-
-**第三，不同时间的数据有不同访问模式**
-
-**场景**：订单数据
-```yaml
-最近3个月：频繁访问（热数据）
-3-12个月：偶尔访问（温数据）
-12个月以上：很少访问（冷数据）
-```
-
-**分区后可以优化**：
-```yaml
-热数据分区：
-  - 放在SSD上
-  - 更多的内存
-  - 更激进的索引
-
-冷数据分区：
-  - 放在HDD上
-  - 压缩存储
-  - 较少的索引
-```
-
-**结论**：
-> 分区表的价值在于：通过物理边界，让查询、维护、存储优化成为可能。
-
-#### 二、核心判断：分区表不是简单拆表，而是定义访问边界
-
-> 分区表的核心判断是：通过分区键（partition key）定义数据的物理边界，让查询只访问相关分区，从而提升查询性能、简化维护操作、优化存储成本。
-
-这个判断说明：
-- **分区键**：定义数据如何分布（通常是时间、ID等）
-- **物理边界**：每个分区是独立的物理文件
-- **查询优化**：分区裁剪（partition pruning）
-- **维护便利**：分区级别的操作
-
-#### 三、分区表的类型
-
-##### 3.1 RANGE分区（范围分区）
-
-**适用场景**：按时间、ID范围等有序字段分区
-
-**示例**：按月分区
-```sql
--- 创建分区表
 CREATE TABLE orders (
     order_id BIGINT,
     user_id BIGINT,
@@ -1506,552 +310,83 @@ CREATE TABLE orders (
     created_at TIMESTAMP
 ) PARTITION BY RANGE (created_at);
 
--- 创建分区（每月一个分区）
 CREATE TABLE orders_202601 PARTITION OF orders
     FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
 
 CREATE TABLE orders_202602 PARTITION OF orders
     FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
 
-CREATE TABLE orders_202603 PARTITION OF orders
-    FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
-
--- 查询时自动分区裁剪
+-- 查询时自动分区裁剪，只扫描orders_202603分区
 SELECT * FROM orders WHERE created_at >= '2026-03-01' AND created_at < '2026-04-01';
--- 只扫描orders_202603分区
 ```
 
-**优势**：
-- 按时间查询性能好
-- 删除旧数据简单（DROP分区）
-- 符合数据生命周期
+优势是按时间查询性能好、删除旧数据简单（DROP分区）、符合数据生命周期。
 
-##### 3.2 LIST分区（列表分区）
+**LIST分区（列表分区）：** 按离散值分区（如地区、状态）。
 
-**适用场景**：按离散值分区（如地区、状态）
-
-**示例**：按地区分区
 ```sql
--- 创建分区表
 CREATE TABLE users (
-    user_id BIGINT,
-    name VARCHAR(100),
-    region VARCHAR(50),
-    registered_at TIMESTAMP
+    user_id BIGINT, name VARCHAR(100), region VARCHAR(50), registered_at TIMESTAMP
 ) PARTITION BY LIST (region);
 
--- 创建分区（每个地区一个分区）
-CREATE TABLE_users_east PARTITION OF users
+CREATE TABLE users_east PARTITION OF users
     FOR VALUES IN ('beijing', 'shanghai', 'hangzhou');
 
 CREATE TABLE users_west PARTITION OF users
     FOR VALUES IN ('chengdu', 'xian', 'chongqing');
 
-CREATE TABLE users_south PARTITION OF users
-    FOR VALUES IN ('guangzhou', 'shenzhen', 'nanning');
-
--- 查询时自动分区裁剪
+-- 查询时自动分区裁剪，只扫描users_east分区
 SELECT * FROM users WHERE region = 'beijing';
--- 只扫描users_east分区
 ```
 
-**优势**：
-- 按地区查询性能好
-- 地区数据隔离
-- 便于地域化部署
+优势是按地区查询性能好、地区数据隔离、便于地域化部署。
 
-##### 3.3 HASH分区（哈希分区）
+**HASH分区（哈希分区）：** 按用户ID哈希分区，均匀分布数据避免热点。
 
-**适用场景**：均匀分布数据，避免热点
-
-**示例**：按用户ID哈希分区
 ```sql
--- 创建分区表（4个分区）
 CREATE TABLE events (
-    event_id BIGINT,
-    user_id BIGINT,
-    event_name VARCHAR(100),
-    event_time TIMESTAMP
+    event_id BIGINT, user_id BIGINT, event_name VARCHAR(100), event_time TIMESTAMP
 ) PARTITION BY HASH (user_id);
 
--- 创建分区
 CREATE TABLE events_0 PARTITION OF events FOR VALUES WITH (MODULUS 4, REMAINDER 0);
 CREATE TABLE events_1 PARTITION OF events FOR VALUES WITH (MODULUS 4, REMAINDER 1);
 CREATE TABLE events_2 PARTITION OF events FOR VALUES WITH (MODULUS 4, REMAINDER 2);
 CREATE TABLE events_3 PARTITION OF events FOR VALUES WITH (MODULUS 4, REMAINDER 3);
-
--- 写入时自动路由到对应分区
-INSERT INTO events (event_id, user_id, event_name, event_time) VALUES (1, 123, 'login', NOW());
--- user_id=123，123 % 4 = 3，写入events_3分区
 ```
 
-**优势**：
-- 数据均匀分布
-- 避免热点
-- 适合并行写入
-
-#### 四、分区表的实战应用
-
-##### 4.1 按日期分区（最常见）
-
-**场景**：订单表按月分区
-
-```sql
--- 1. 创建主表
-CREATE TABLE orders (
-    order_id BIGINT,
-    user_id BIGINT,
-    order_status VARCHAR(50),
-    total_amount NUMERIC(10, 2),
-    created_at TIMESTAMP,
-    paid_at TIMESTAMP
-) PARTITION BY RANGE (created_at);
-
--- 2. 创建默认分区（可选，防止数据写入失败）
-CREATE TABLE orders_default PARTITION OF orders DEFAULT;
-
--- 3. 创建分区（可以用脚本自动创建）
-CREATE TABLE orders_202601 PARTITION OF orders
-    FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
-
-CREATE TABLE orders_202602 PARTITION OF orders
-    FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
-
--- 4. 查询（自动分区裁剪）
-EXPLAIN SELECT * FROM orders WHERE created_at >= '2026-02-15' AND created_at < '2026-02-16';
-
--- 执行计划显示只扫描orders_202602分区
-```
-
-**自动创建分区的脚本**：
-```sql
--- 创建一个函数自动创建下个月的分区
-CREATE OR REPLACE FUNCTION create_monthly_partition()
-RETURNS void AS $$
-DECLARE
-    partition_name TEXT;
-    start_date TEXT;
-    end_date TEXT;
-BEGIN
-    partition_name := 'orders_' || to_char(CURRENT_DATE + INTERVAL '1 month', 'YYYYMM');
-    start_date := to_char(CURRENT_DATE + INTERVAL '1 month', 'YYYY-MM-DD');
-    end_date := to_char(CURRENT_DATE + INTERVAL '2 months', 'YYYY-MM-DD');
-
-    EXECUTE format('
-        CREATE TABLE IF NOT EXISTS %I PARTITION OF orders
-        FOR VALUES FROM (%L) TO (%L)
-    ', partition_name, start_date, end_date);
-END;
-$$ LANGUAGE plpgsql;
-
--- 定期执行（如每月1号）
-SELECT create_monthly_partition();
-```
-
-##### 4.2 分区表的索引
-
-**全局索引 vs 分区索引**
-
-```sql
--- 创建分区表
-CREATE TABLE orders (...) PARTITION BY RANGE (created_at);
-
--- 方式1：在主表创建索引（自动为每个分区创建索引）
-CREATE INDEX idx_orders_user_id ON orders(user_id);
--- 结果：每个分区都有idx_orders_user_id
-
--- 方式2：在单个分区创建索引
-CREATE INDEX idx_orders_202601_paid_at ON orders_202601(paid_at);
--- 结果：只有orders_202601分区有这个索引
-```
-
-**注意事项**：
-- 主表上的索引会自动应用到所有分区
-- 可以在单个分区上创建额外索引
-- 跨分区查询需要查询所有分区的索引
-
-##### 4.3 分区表的约束
-
-**主键和唯一约束**
-
-```sql
--- 问题：分区表的主键必须包含分区键
-CREATE TABLE orders (
-    order_id BIGINT,  -- 主键不包含分区键
-    created_at TIMESTAMP
-) PARTITION BY RANGE (created_at);
-
--- 错误：unique constraint on partition key must include the partition key
-ALTER TABLE orders ADD PRIMARY KEY (order_id);
-
--- 正确：主键包含分区键
-ALTER TABLE orders ADD PRIMARY KEY (order_id, created_at);
-
--- 或者：主键包含分区键
-CREATE TABLE orders (
-    order_id BIGINT,
-    created_at TIMESTAMP,
-    PRIMARY KEY (order_id, created_at)
-) PARTITION BY RANGE (created_at);
-```
-
-**外键约束**
-
-```sql
--- 分区表可以有外键
-CREATE TABLE orders (
-    order_id BIGINT,
-    user_id BIGINT REFERENCES users(user_id),
-    created_at TIMESTAMP,
-    PRIMARY KEY (order_id, created_at)
-) PARTITION BY RANGE (created_at);
-```
-
-**注意事项**：
-- 分区表的主键必须包含分区键
-- 分区表的外键不需要包含分区键
-- 建议主键设计：(业务键, 分区键)
-
-#### 五、分区表的性能优化
-
-##### 5.1 分区裁剪（Partition Pruning）
-
-**什么是分区裁剪**：
-- 查询时只扫描相关的分区
-- 优化器自动识别哪些分区需要扫描
-- 大幅减少I/O
-
-**示例**：
-```sql
--- 查询4月的订单
-EXPLAIN ANALYZE SELECT * FROM orders WHERE created_at >= '2026-04-01' AND created_at < '2026-05-01';
-
--- 执行计划显示：
--- Append
---   -> Seq Scan on orders_202604  (cost=... rows=...)
--- 只扫描orders_202604分区
-```
-
-**确保分区裁剪生效**：
-```sql
--- 好的查询：分区键在WHERE条件中
-SELECT * FROM orders WHERE created_at >= '2026-04-01';
-
--- 不好的查询：分区键被函数包装，无法裁剪
-SELECT * FROM orders WHERE date(created_at) = '2026-04-01';
--- 可能无法裁剪，需要扫描所有分区
-```
-
-##### 5.2 分区表的执行计划
-
-**查看分区扫描**：
-```sql
--- 查询跨多个分区
-EXPLAIN SELECT * FROM orders
-WHERE created_at >= '2026-03-01' AND created_at < '2026-05-01';
-
--- 执行计划显示：
--- Append
---   -> Seq Scan on orders_202603
---   -> Seq Scan on orders_202604
--- 只扫描2个分区，而不是全年12个分区
-```
-
-##### 5.3 分区表的并行查询
-
-**PostgreSQL支持并行查询**：
-```sql
--- 启用并行查询
-SET max_parallel_workers_per_gather = 4;
-
--- 查询多个分区时，可以并行扫描
-EXPLAIN SELECT * FROM orders
-WHERE created_at >= '2026-01-01' AND created_at < '2026-04-01';
-
--- 执行计划显示：
--- Append
---   -> Parallel Seq Scan on orders_202601
---   -> Parallel Seq Scan on orders_202602
---   -> Parallel Seq Scan on orders_202603
--- 3个分区并行扫描
-```
-
-#### 六、分区表的维护
-
-##### 6.1 创建新分区
-
-**手动创建**：
-```sql
--- 创建下个月的分区
-CREATE TABLE orders_202605 PARTITION OF orders
-    FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
-```
-
-**自动创建**：
-```sql
--- 使用定时任务（如pg_cron）
-CREATE EXTENSION pg_cron;
-
--- 每月1号自动创建分区
-SELECT cron.schedule('create-monthly-partition', '0 0 1 * *', 'SELECT create_monthly_partition()');
-```
-
-##### 6.2 删除旧分区
-
-**直接删除**：
-```sql
--- 删除一年前的分区
-DROP TABLE orders_202504;
-
--- 优势：
--- 1. 快速（直接删除文件）
--- 2. 不产生WAL日志
--- 3. 不锁表（只锁分区）
-```
-
-**先备份再删除**：
-```sql
--- 1. 先归档
-CREATE TABLE orders_archive_202501 AS SELECT * FROM orders_202501;
-
--- 2. 再删除分区
-DROP TABLE orders_202501;
-```
-
-##### 6.3 分区表的备份和恢复
-
-**备份单个分区**：
-```bash
-# 备份orders_202601分区
-pg_dump -t orders_202601 -f orders_202601.sql
-```
-
-**恢复单个分区**：
-```bash
-# 恢复orders_202601分区
-psql -f orders_202601.sql
-```
-
-##### 6.4 分区表的监控
-
-**监控分区大小**：
-```sql
-SELECT
-    schemaname,
-    tablename,
-    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
-FROM pg_tables
-WHERE tablename LIKE 'orders_%'
-ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
-```
-
-**监控分区行数**：
-```sql
-SELECT
-    'orders_202601' as partition_name,
-    count(*) as row_count
-FROM orders_202601
-UNION ALL
-SELECT
-    'orders_202602' as partition_name,
-    count(*) as row_count
-FROM orders_202602;
--- 或者使用pg_stat_user_tables
-```
-
-#### 七、分区表的限制和注意事项
-
-##### 7.1 主键限制
-
-**问题**：主键必须包含分区键
-
-```sql
--- 错误
-CREATE TABLE orders (
-    order_id BIGINT PRIMARY KEY,  -- 主键不包含分区键
-    created_at TIMESTAMP
-) PARTITION BY RANGE (created_at);
-
--- 正确
-CREATE TABLE orders (
-    order_id BIGINT,
-    created_at TIMESTAMP,
-    PRIMARY KEY (order_id, created_at)  -- 主键包含分区键
-) PARTITION BY RANGE (created_at);
-```
-
-**影响**：
-- 业务查询需要同时提供order_id和created_at
-- 可能需要调整查询逻辑
-
-##### 7.2 更新分区键
-
-**问题**：更新分区键可能导致行移动
-
-```sql
--- 更新created_at（分区键）
-UPDATE orders SET created_at = '2026-05-01' WHERE order_id = 123;
-
--- 如果2026-04-01的订单更新到2026-05-01
--- 行需要从orders_202604分区移动到orders_202605分区
--- 这个操作可能很慢
-```
-
-**建议**：
-- 避免更新分区键
-- 如果必须更新，考虑删除后重新插入
-
-##### 7.3 分区数量
-
-**问题**：分区数量不是越多越好
-
-**太多分区的问题**：
-- 查询规划器需要评估更多分区
-- 内存占用增加
-- 文件句柄占用多
-
-**建议**：
-```yaml
-按月分区：1-3年的数据（12-36个分区）
-按日分区：1个月的数据（30个分区）
-按ID分区：根据数据量，通常是4-32个分区
-```
-
-#### 八、常见误区
-
-**误区一：分区表一定能提升性能**
-
-- **说明**：分区表只对特定查询提升性能，不是万能的
-- **后果**：盲目分区，性能反而下降
-- **正确理解**：
-  - 按分区键查询：性能提升
-  - 不按分区键查询：性能可能下降
-  - 分区数量太多：查询规划慢
-
-**误区二：所有大表都需要分区**
-
-- **说明**：分区表有适用场景，不是所有大表都需要
-- **后果**：过度分区，增加复杂度
-- **正确理解**：
-  - <1000万行：通常不需要分区
-  - 1000万-1亿行：考虑分区
-  - >1亿行：建议分区
-
-**误区三：分区键可以随便选**
-
-- **说明**：分区键的选择至关重要，影响分区裁剪效果
-- **后果**：分区键选择不当，无法裁剪
-- **正确理解**：
-  - 按时间查询：选时间字段作为分区键
-  - 按ID查询：选ID字段作为分区键
-  - 按地区查询：选地区字段作为分区键
-
-**误区四：分区后不需要索引**
-
-- **说明**：分区表仍然需要索引，只是索引在各个分区内
-- **后果**：不创建索引，查询慢
-- **正确理解**：
-  - 分区表需要在主表创建索引
-  - 索引会自动应用到所有分区
-  - 可以在单个分区创建额外索引
-
-**误区五：分区表的维护很简单**
-
-- **说明**：分区表减少了维护成本，但仍然需要维护
-- **后果**：不维护，分区表性能下降
-- **正确理解**：
-  - 需要定期创建新分区
-  - 需要定期删除旧分区
-  - 需要监控分区大小和性能
-  - 需要定期VACUUM和ANALYZE
-
-#### 九、实战任务
-
-**任务1：创建分区表**
-
-创建一个按月分区的orders表：
-
-```sql
--- 1. 创建主表
-CREATE TABLE orders (
-    order_id BIGINT,
-    user_id BIGINT,
-    order_status VARCHAR(50),
-    total_amount NUMERIC(10, 2),
-    created_at TIMESTAMP,
-    paid_at TIMESTAMP,
-    PRIMARY KEY (order_id, created_at)
-) PARTITION BY RANGE (created_at);
-
--- 2. 创建最近3个月的分区
-CREATE TABLE orders_202604 PARTITION OF orders
-    FOR VALUES FROM ('2026-04-01') TO ('2026-05-01');
-
-CREATE TABLE orders_202605 PARTITION OF orders
-    FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
-
-CREATE TABLE orders_202606 PARTITION OF orders
-    FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
-
--- 3. 创建索引
-CREATE INDEX idx_orders_user_id ON orders(user_id);
-CREATE INDEX idx_orders_status ON orders(order_status);
-
--- 4. 插入测试数据
-INSERT INTO orders (order_id, user_id, order_status, total_amount, created_at, paid_at)
-VALUES (1, 123, 'paid', 100.00, '2026-05-15 10:00:00', '2026-05-15 10:05:00');
-
--- 5. 查询（验证分区裁剪）
-EXPLAIN SELECT * FROM orders WHERE created_at >= '2026-05-01' AND created_at < '2026-06-01';
-```
-
-**观察**：
-- 执行计划只扫描orders_202605分区？
-- 插入数据是否自动路由到正确分区？
-
-**任务2：分区维护**
-
-模拟分区维护操作：
-
-```sql
--- 1. 创建下个月的分区
-CREATE TABLE orders_202607 PARTITION OF orders
-    FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
-
--- 2. 删除旧分区（先备份）
-CREATE TABLE orders_202604_backup AS SELECT * FROM orders_202604;
-DROP TABLE orders_202604;
-
--- 3. 查看分区大小
-SELECT
-    tablename,
-    pg_size_pretty(pg_total_relation_size('public.'||tablename)) as size
-FROM pg_tables
-WHERE tablename LIKE 'orders_%'
-ORDER BY pg_total_relation_size('public.'||tablename) DESC;
-```
-
-**任务3：分区裁剪验证**
-
-验证分区裁剪是否生效：
-
-```sql
--- 查询1：按分区键查询（应该裁剪）
-EXPLAIN ANALYZE SELECT * FROM orders WHERE created_at >= '2026-05-15' AND created_at < '2026-05-16';
-
--- 查询2：不按分区键查询（可能不裁剪）
-EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 123;
-
--- 查询3：跨分区查询（应该扫描多个分区）
-EXPLAIN ANALYZE SELECT * FROM orders WHERE created_at >= '2026-04-01' AND created_at < '2026-06-01';
-```
-
-**对比**：
-- 哪些查询能裁剪？
-- 哪些查询不能裁剪？
-- 性能差异多大？
-
-#### 十、小结
+优势是数据均匀分布、避免热点、适合并行写入。
+
+#### 三、分区表的实战应用
+
+按日期分区是最常见的场景。需要创建主表、创建默认分区（防止数据写入失败）、创建分区（可用脚本自动创建）。自动创建分区的函数可以定期执行，如每月1号自动创建下月分区。
+
+分区表的索引需要注意：在主表创建索引会自动为每个分区创建索引，在单个分区可以创建额外索引。跨分区查询需要查询所有分区的索引。
+
+分区表的主键约束是：主键必须包含分区键。`PRIMARY KEY (order_id, created_at)`是正确的写法。外键不需要包含分区键。更新分区键可能导致行在分区之间移动，建议避免更新分区键。
+
+#### 四、分区表的性能优化
+
+分区裁剪（Partition Pruning）是核心优化机制。查询时只扫描相关的分区，大幅减少I/O。确保分区裁剪生效的关键是：分区键在WHERE条件中直接使用，不要被函数包装。`WHERE created_at >= '2026-04-01'`可以裁剪，`WHERE date(created_at) = '2026-04-01'`可能无法裁剪。
+
+分区表支持并行查询。查询跨越多个分区时，`max_parallel_workers_per_gather = 4`配置下3个分区可以并行扫描，每个Worker扫描一个分区。
+
+#### 五、分区表的维护
+
+创建新分区可以手动创建，也可以用pg_cron设置每月1号自动创建。删除旧分区直接DROP TABLE，快速且不产生WAL日志。备份单个分区用`pg_dump -t orders_202601`。
+
+分区数量不宜过多。按月分区1-3年的数据有12-36个分区合理；按日分区同理。太多分区会导致查询规划器需要评估更多分区、内存占用增加、文件句柄占用多。
+
+#### 六、常见误区
+
+**分区表一定能提升性能。** 分区表只对按分区键查询提升性能。不按分区键查询可能性能下降，分区数量太多会导致查询规划慢。
+
+**所有大表都需要分区。** 小于1000万行通常不需要分区，1000万-1亿行考虑分区，超过1亿行建议分区。
+
+**分区后不需要索引。** 分区表仍然需要索引，在主表创建索引会自动应用到所有分区，也可以在单个分区创建额外索引。
+
+**分区表的维护很简单。** 需要定期创建新分区、删除旧分区、监控分区大小和性能、定期VACUUM和ANALYZE。
+
+#### 七、小结
 
 分区表让大表具有物理边界。
 

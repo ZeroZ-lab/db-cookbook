@@ -291,6 +291,27 @@ const learningParts = [
   }
 ];
 
+const chapterCheckpoints = new Map([
+  [0, ['为什么本书先讲 PostgreSQL，而不是直接讲 Spark、Flink 或向量数据库？', '你能否复述从业务库到 AI 数据基础设施的最小演化链路？']],
+  [1, ['你能否解释一张表中的一行、一列、主键、外键和约束各代表什么业务事实？', '你能否说明 PostgreSQL 为什么适合作为数据库直觉训练入口？']],
+  [2, ['你能否为 GMV、留存或复购写出口径说明，而不是只写出一条 SQL？', '你能否指出一条 SQL 的粒度、时间边界和状态边界？']],
+  [3, ['你能否区分索引、分区、物化视图分别解决什么问题？', '你能否判断一个慢查询是 SQL 写法问题还是单机边界问题？']],
+  [4, ['你能否解释为什么一个系统很难同时做好高频事务和复杂分析？', '你能否判断一个查询应该留在 PostgreSQL 还是迁入 OLAP？']],
+  [5, ['你能否把业务表重构成事实表、维度表和分层模型？', '你能否说明指标口径应该沉淀在哪一层，而不是散落在报表里？']],
+  [6, ['你能否画出 PostgreSQL 到数仓或实时链路的同步路径？', '你能否说明 ETL、ELT、CDC 在你的场景里各自承担什么责任？']],
+  [7, ['你能否区分批处理层和查询层的职责边界？', '你能否说明 Spark、Hive、Trino 在一条历史分析链路中的不同位置？']],
+  [8, ['你能否说明事件时间、水位线和状态为什么是实时系统的核心？', '你能否指出重复消息、迟到数据和 sink 幂等各自会造成什么问题？']],
+  [9, ['你能否根据查询模式选择 ClickHouse、Doris 或 DuckDB？', '你能否解释 OLAP 快和数据可信之间为什么不是同一件事？']],
+  [10, ['你能否说明向量检索解决什么问题，又不解决什么问题？', '你能否解释来源、权限、版本和评测为什么必须进入 RAG 链路？']],
+  [11, ['你能否判断一个问题为什么更适合图数据库而不是关系库或向量库？', '你能否说明 GraphRAG 的路径扩展为什么必须受权限和来源约束？']],
+  [12, ['你能否解释对象存储、Parquet、表格式和 Catalog 的责任分工？', '你能否说明湖仓为什么仍然需要建模、质量和治理，而不只是开放格式？']],
+  [13, ['你能否为一个指标或知识库写出最小治理卡片？', '你能否说明数据治理为什么必须嵌入流程，而不是最后补文档？']],
+  [14, ['你能否从 7 个项目里看出 PostgreSQL 到 AI 数据系统的连续演化关系？', '你能否区分“可检查骨架”和“端到端已跑通”的证据差别？']],
+  [15, ['你能否判断自己应该先补 SQL、建模、链路还是治理？', '你能否为下一阶段学习写出一个可检查交付物，而不是只列工具名？']],
+  [16, ['你能否用能力地图定位自己的短板，而不是只说“会不会某个工具”？', '你能否把一个项目拆成 SQL、建模、链路、选型和治理五类能力？']],
+  [17, ['你能否独立设计一条业务库到数据应用的最小闭环？', '你能否说明每个组件加入系统的原因、代价和验证方式？']]
+]);
+
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
@@ -375,6 +396,13 @@ function frontmatter(chapter) {
   return lines.join('\n');
 }
 
+function renderCheckpoints(chapterNum) {
+  const checkpoints = chapterCheckpoints.get(chapterNum) ?? [];
+  if (checkpoints.length === 0) return '';
+  const items = checkpoints.map((item) => `- ${item}`).join('\n');
+  return `::: info 本章验收问题\n${items}\n:::\n`;
+}
+
 function chapterPage(chapter) {
   const rawSource = stripH1(read(chapter.source)).trim();
   const source = integrateSectionsInOverview(rawSource, chapter.chapter);
@@ -384,17 +412,9 @@ function chapterPage(chapter) {
 ::: tip 本章导读
 ${chapter.summary}
 :::
+${renderCheckpoints(chapter.chapter)}
 ${visualPath}
 
-## 本章阅读框架
-
-| 阅读问题 | 本章回答方式 |
-| --- | --- |
-| 这个问题为什么出现？ | 从业务增长、数据规模、系统目标或 AI 应用压力切入。 |
-| 它解决什么问题？ | 提炼为一个核心判断，避免把概念写成孤立定义。 |
-| 它不解决什么问题？ | 在机制解释和常见误区中说明边界，防止工具崇拜。 |
-| 它在真实平台哪里出现？ | 放回 PostgreSQL、数仓、批流、OLAP、湖仓、向量、图和治理的演化链路。 |
-| 读完要会做什么？ | 通过场景案例和实战任务转成可练习的判断。 |
 
 \`\`\`mermaid
 ${chapter.diagram}
@@ -449,6 +469,13 @@ features:
 这不是按工具热度排列的教程，而是一条系统演化路线。读者先用 PostgreSQL 建立数据库直觉，再用 SQL 建立分析表达能力，然后理解业务库为什么会分化出数仓、ETL/CDC、批处理、实时计算、OLAP 数据库和湖仓，最后进入向量、图和治理这些 AI 时代的数据基础设施主题。
 
 每章都按同一套阅读结构展开：问题切入、核心判断、机制解释、系统位置、场景案例、常见误区、实战任务、下一章衔接。这样读者不是背概念，而是在训练系统判断。
+
+## 你现在怎么验证自己学会了
+
+- [SQL 实验室](/sql-lab)：先把第 2 章的 SQL 样例从“能读懂”推进到“能运行、能解释口径”。
+- [项目实战状态页](/projects)：看清 7 个项目哪些可以直接阅读，哪些只完成静态骨架，哪些仍依赖外部运行环境。
+- [第 15 章：推荐学习顺序](/chapters/15-learning-order)：判断自己现在该补 SQL、建模、链路还是治理。
+- [第 16 章：能力地图](/chapters/16-capability-map)：把“学过哪些工具”转换成“具备哪些可复用能力”。
 
 ## 分阶段阅读路径
 
@@ -515,6 +542,8 @@ ${part.promise}
 ${chapter.summary}
 :::
 
+${renderCheckpoints(chapter.chapter)}
+
 ${source}
 `);
     }
@@ -560,93 +589,15 @@ flowchart LR
 }
 
 function createGlossary() {
-  return `# 术语表
-
-## PostgreSQL 基础
-
-- **PostgreSQL**：本书建立数据库直觉的主入口，承担业务数据组织、事务一致性、SQL 查询和中小规模分析的基础训练。
-- **Database**：一个相对独立的数据世界。
-- **Schema**：数据库内部的命名空间。
-- **Table**：业务对象、事件或关系的数据化表达。
-- **Row**：一条事实记录。
-- **Column**：事实的属性。
-- **Primary Key**：解决记录身份问题。
-- **Foreign Key**：解决表之间关系问题。
-- **Transaction**：让多步修改表现得像一个可靠动作。
-- **Index**：用写入成本换读取路径，加速特定查询访问。
-- **Partition**：为持续增长的大表建立可管理、可裁剪的物理边界。
-- **Materialized View**：把重复查询结果提前算好并存下来，需要刷新。
-- **WAL**：Write-Ahead Log，PostgreSQL 的预写日志，是逻辑复制和 CDC 的基础。
-
-## 数据建模
-
-- **Fact Table**：记录业务事实的表，一行代表一笔交易、一次事件或一个度量。
-- **Dimension Table**：描述业务对象属性的表，如用户、商品、地区。
-- **Star Schema**：以事实表为中心、维度表围绕的星型建模方式。
-- **ODS / DWD / DWS / ADS**：数仓分层，从原始数据到明细、汇总和应用层。
-- **Metric**：可量化的业务度量，如 GMV、DAU、转化率。
-- **Granularity**：表中一行代表的业务粒度。
-
-## 数据平台
-
-- **OLTP**：面向业务交易，高频小事务、低延迟和强一致优先。
-- **OLAP**：面向数据分析，大范围扫描、聚合和吞吐优先。
-- **ETL / ELT**：数据抽取、转换、装载的链路模式。
-- **CDC**：捕获数据库变更并形成持续数据流。
-- **Data Lineage**：数据从源到目标的流转路径和依赖关系。
-
-## 批处理与流处理
-
-- **Spark**：大规模分布式批处理和数据转换引擎。
-- **Flink**：有状态流计算引擎，支持事件时间、窗口和 Exactly Once 语义。
-- **Kafka**：分布式事件流平台，用 Topic 和 Partition 承接持续数据流。
-- **Watermark**：Flink 中判断事件时间推进到哪里的机制，决定窗口何时输出。
-- **Exactly Once**：端到端处理语义，需要 Source、Checkpoint 和 Sink 共同配合。
-
-## OLAP 引擎
-
-- **ClickHouse**：列式高性能 OLAP 数据库，核心引擎为 MergeTree。
-- **MergeTree**：ClickHouse 的核心表引擎，通过排序键和稀疏索引优化分析查询。
-- **Doris**：面向实时数仓和 BI 的 MPP 分析数据库。
-- **DuckDB**：本地嵌入式 OLAP 数据库，可直接查询 Parquet 文件。
-
-## 湖仓
-
-- **Lakehouse**：用表格式把对象存储中的文件组织成可管理的分析表。
-- **Iceberg**：湖仓表格式，支持快照、schema 演化、分区演化和时间旅行。
-- **Delta Lake**：湖仓表格式，提供 ACID 事务和版本管理。
-- **Hudi**：湖仓表格式，支持增量处理和近实时数据入湖。
-- **Parquet**：列式存储格式，适合分析查询和跨引擎共享。
-- **Catalog**：管理湖仓表元数据、快照和 schema 的目录服务。
-- **Snapshot**：湖仓表在某一时刻的完整数据版本。
-
-## 向量数据库
-
-- **Embedding**：把文本、图片、代码等对象转换成向量。
-- **Vector Search**：基于向量相似度检索内容。
-- **HNSW**：分层可导航小世界图索引，适合高召回低延迟场景。
-- **IVF**：倒排文件索引，通过聚类加速大规模向量检索。
-- **Chunk**：文档切分后的语义片段，是 RAG 检索的基本单位。
-- **Rerank**：对召回结果重新排序，提升最终答案质量。
-- **pgvector**：PostgreSQL 的向量扩展，适合中小规模 RAG 场景。
-- **Milvus**：专门向量数据库，适合大规模向量检索。
-
-## 图数据库
-
-- **Node / Vertex**：图中的实体节点。
-- **Edge / Relationship**：实体之间的关系。
-- **Property Graph**：节点和边都可以带属性的图模型。
-- **Cypher**：Neo4j 的图查询语言，用模式匹配表达路径查询。
-- **GraphRAG**：结合图关系和检索增强生成的 AI 应用模式。
-- **Neo4j**：生态成熟的图数据库，适合知识图谱和路径查询。
-
-## 数据治理
-
-- **Data Governance**：质量、元数据、血缘、权限、指标和知识治理的综合体系。
-- **Metadata**：描述数据的数据，包括技术元数据和业务元数据。
-- **Data Quality**：数据的完整性、准确性、一致性、唯一性和及时性。
-- **Metric Governance**：统一指标定义、口径、血缘和版本管理。
-`;
+  const glossary = JSON.parse(fs.readFileSync(path.join(siteDir, '.vitepress', 'glossary.json'), 'utf8'));
+  let md = '# 术语表\n';
+  for (const [category, terms] of Object.entries(glossary)) {
+    md += `\n## ${category}\n\n`;
+    for (const [term, def] of Object.entries(terms)) {
+      md += `- **${term}**：${def}\n`;
+    }
+  }
+  return md;
 }
 
 function createProjects() {
@@ -782,9 +733,13 @@ function createSourcesPage() {
 }
 
 function createConfig() {
-  const sidebarItems = chapters.map((chapter) => ({
-    text: `${chapter.chapter}. ${chapter.title}`,
-    link: linkFor(chapter)
+  // Build sidebar with 5-part nested structure
+  const sidebarItems = learningParts.map(part => ({
+    text: part.title,
+    collapsed: false,
+    items: chapters
+      .filter(c => c.chapter >= part.range[0] && c.chapter <= part.range[1])
+      .map(c => ({ text: `${c.chapter}. ${c.title}`, link: linkFor(c) }))
   }));
   return `import { defineConfig } from 'vitepress'
 
@@ -813,10 +768,7 @@ export default defineConfig({
       { text: '项目实战', link: '/projects' }
     ],
     sidebar: [
-      {
-        text: '数据库全书',
-        items: sidebarItems
-      },
+      ...sidebarItems,
       {
         text: '辅助阅读',
         items: [
@@ -868,12 +820,14 @@ export default defineConfig({
 function createTheme() {
   return `import DefaultTheme from 'vitepress/theme'
 import Mermaid from './Mermaid.vue'
+import GlossaryTerm from './GlossaryTerm.vue'
 import './custom.css'
 
 export default {
   extends: DefaultTheme,
   enhanceApp({ app }) {
     app.component('Mermaid', Mermaid)
+    app.component('GlossaryTerm', GlossaryTerm)
   }
 }
 `;

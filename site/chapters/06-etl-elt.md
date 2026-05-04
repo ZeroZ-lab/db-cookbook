@@ -9,17 +9,13 @@ next: { text: "7. 批处理系统：Hive / Spark / Trino", link: "/chapters/07-b
 ::: tip 本章导读
 说明 PostgreSQL 数据如何通过批量同步、CDC、转换和调度进入数据平台。
 :::
+::: info 本章验收问题
+- 你能否画出 PostgreSQL 到数仓或实时链路的同步路径？
+- 你能否说明 ETL、ELT、CDC 在你的场景里各自承担什么责任？
+:::
 
 
-## 本章阅读框架
 
-| 阅读问题 | 本章回答方式 |
-| --- | --- |
-| 这个问题为什么出现？ | 从业务增长、数据规模、系统目标或 AI 应用压力切入。 |
-| 它解决什么问题？ | 提炼为一个核心判断，避免把概念写成孤立定义。 |
-| 它不解决什么问题？ | 在机制解释和常见误区中说明边界，防止工具崇拜。 |
-| 它在真实平台哪里出现？ | 放回 PostgreSQL、数仓、批流、OLAP、湖仓、向量、图和治理的演化链路。 |
-| 读完要会做什么？ | 通过场景案例和实战任务转成可练习的判断。 |
 
 ```mermaid
 flowchart LR
@@ -56,7 +52,7 @@ CDC 消费变慢时，WAL 会不会堆积？
 
 > 大数据平台的核心不是某一个计算引擎，而是持续、可信、可追踪的数据链路。
 
-本章要建立的判断是：ETL / ELT 解决的不是“把数据搬走”，而是让源系统数据以可恢复、可验证、可追踪的方式进入分析系统。
+数据不会自己从业务库跑到分析系统。ETL 和 ELT 解决的是这个搬运过程——但搬运的质量决定了后续所有分析、模型、报表的可信度。这一章建立的是数据链路的工程判断：可恢复、可验证、可追踪。
 
 它的边界也要明确。ETL / ELT 不能替代数仓建模，不能自动统一指标口径，不能让错误源数据变正确，也不能单独保证端到端 Exactly Once。它提供的是数据进入平台的工程链路，后续仍需要建模、质量、血缘、权限和调度治理。
 
@@ -64,3045 +60,540 @@ CDC 消费变慢时，WAL 会不会堆积？
 
 ### 6.1 ETL vs ELT
 
-前面学习了数据仓库建模，了解了维度建模、分层架构、指标体系等。
+第 5 章讲完了数仓建模——维度怎么设计、分层怎么规划。这一章进入数据工程的实操：怎么把业务库的数据搬到数仓里。先解决最基础的选型问题：ETL 还是 ELT。
 
-现在开始学习数据工程的核心环节：数据移动和转换。
+#### 两者的区别就一个：转换发生在哪
 
-**场景**：
-```yaml
-数据仓库项目启动：
-  
-技术经理："数据仓库设计好了，现在开始把数据从业务库同步过来"
-  
-数据工程师A："我用ETL，先转换再加载"
-  
-数据工程师B："我用ELT，先加载再转换"
-  
-新同事："什么是ETL？什么是ELT？有什么区别？"
-```
+ETL（Extract-Transform-Load）的流程是：从源库抽取数据 → 在独立的 ETL 服务器上做清洗和转换 → 把转换好的数据加载到数仓。数据在进入数仓之前已经"干净"了。
 
-**问题**：
-- 什么是ETL？什么是ELT？
-- ETL和ELT有什么区别？
-- 应该选择ETL还是ELT？
-- 各自的适用场景是什么？
+ELT（Extract-Load-Transform）反过来：从源库抽取数据 → 直接把原始数据加载到数仓的 ODS 层 → 在数仓内部用 SQL 做转换。数据先"扔"进数仓，再慢慢整理。
 
-**答案**：**ETL和ELT是两种不同的数据集成策略，根据数据量、性能要求、技术栈选择合适的方法**
+这个区别决定了后面的一切：用什么工具、对源库的影响、转换能有多复杂、团队需要什么技能。
 
-#### 一、什么是ETL和ELT
+ETL 的典型实现：
 
-##### 1.1 ETL（Extract-Transform-Load）
-
-**定义**：先抽取数据，然后转换数据，最后加载数据
-
-**流程**：
-```text
-源系统 → 抽取(Extract) → 转换(Transform) → 加载(Load) → 目标系统
-         ↓               ↓               ↓
-      原始数据        清洗/格式化      转换后数据
-```
-
-**示例**：
 ```python
-# ETL流程示例（使用Python）
+# 1. Extract：从 MySQL 拉数据
+df = pd.read_sql('SELECT * FROM orders WHERE created_at >= "2026-01-01"', mysql_conn)
 
-# 第1步：Extract（抽取）
-def extract():
-    # 从MySQL抽取数据
-    conn_mysql = pymysql.connect(host='mysql-server', user='root', database='business_db')
-    df = pd.read_sql('SELECT * FROM orders WHERE created_at >= "2026-01-01"', conn_mysql)
-    conn_mysql.close()
-    return df
+# 2. Transform：在 Python 里清洗转换
+df = df[df['order_amount'] > 0]  # 过滤无效数据
+df = df.dropna(subset=['user_id'])
+df['date_id'] = pd.to_datetime(df['created_at']).dt.strftime('%Y%m%d').astype(int)
+df = df.merge(users_df, on='user_id', how='left')  # 关联用户维度
 
-# 第2步：Transform（转换）
-def transform(df):
-    # 数据清洗
-    df = df[df['order_amount'] > 0]  # 过滤负数订单
-    df = df.dropna(subset=['user_id'])  # 删除用户ID为空的记录
-    
-    # 数据转换
-    df['order_date'] = pd.to_datetime(df['created_at']).dt.date
-    df['date_id'] = df['order_date'].apply(lambda x: int(x.strftime('%Y%m%d')))
-    
-    # 数据关联
-    df_users = pd.read_sql('SELECT user_id, city FROM users', conn_mysql)
-    df = df.merge(df_users, on='user_id', how='left')
-    
-    return df
-
-# 第3步：Load（加载）
-def load(df):
-    # 加载到PostgreSQL
-    conn_pg = psycopg2.connect(host='postgres-server', user='postgres', database='data_warehouse')
-    cursor = conn_pg.cursor()
-    
-    for _, row in df.iterrows():
-        cursor.execute("""
-            INSERT INTO dwd_fact_orders 
-            (order_id, date_id, user_id, order_amount, city)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (row['order_id'], row['date_id'], row['user_id'], row['order_amount'], row['city']))
-    
-    conn_pg.commit()
-    conn_pg.close()
-
-# 执行ETL
-df_raw = extract()
-df_transformed = transform(df_raw)
-load(df_transformed)
+# 3. Load：写入数仓
+df.to_sql('dwd_fact_orders', pg_conn, if_exists='append')
 ```
 
-**特点**：
-```yaml
-转换位置：
-  - 在独立的ETL服务器上
-  - 在加载前完成转换
-  
-数据流：
-  - 源系统 → ETL服务器 → 目标系统
-  - 转换后的数据才进入目标系统
-  
-性能影响：
-  - 对源系统影响小
-  - 转换过程不影响目标系统
-```
+ELT 的典型实现：
 
-##### 1.2 ELT（Extract-Load-Transform）
-
-**定义**：先抽取数据，然后加载数据，最后在目标系统中转换数据
-
-**流程**：
-```text
-源系统 → 抽取(Extract) → 加载(Load) → 转换(Transform) → 目标系统
-         ↓               ↓               ↓
-      原始数据        原始数据        转换后数据
-                                        (在目标系统内完成)
-```
-
-**示例**：
 ```sql
--- ELT流程示例（使用SQL）
+-- 1. Extract + Load：CDC 工具直接把数据同步到 ODS 层（工具自动完成）
+-- ods_orders 表已经有原始数据了
 
--- 第1步：Extract（抽取）
--- 从MySQL抽取数据（通过CDC工具）
--- 工具：Debezium + Kafka
--- 数据自动同步到Kafka topic
-
--- 第2步：Load（加载）
--- 从Kafka加载到PostgreSQL的ODS层（原始数据）
--- 自动完成，无需人工干预
-
--- 第3步：Transform（转换）
--- 在PostgreSQL内完成转换
-
--- 转换1：ODS → DWD（清洗）
+-- 2. Transform：在数仓内用 SQL 做转换
 CREATE TABLE dwd_fact_orders AS
-SELECT 
-    order_id,
-    date_id,
-    user_id,
-    product_id,
-    order_amount
+SELECT order_id,
+       TO_CHAR(created_at, 'YYYYMMDD')::INT as date_id,
+       user_id, product_id, order_amount
 FROM ods_orders
-WHERE order_amount > 0              -- 清洗：过滤负数订单
-  AND user_id IS NOT NULL           -- 清洗：过滤空用户ID
-  AND order_status = 'completed';   -- 清洗：只保留已完成订单
+WHERE order_amount > 0
+  AND user_id IS NOT NULL
+  AND order_status = 'completed';
 
--- 转换2：DWD → DWS（关联）
+-- 3. 继续 DWS 层
 CREATE TABLE dws_daily_gmv AS
-SELECT 
-    date_id,
-    count(*) as order_count,
-    sum(order_amount) as gmv
-FROM dwd_fact_orders f
-JOIN dim_users u ON f.user_id = u.user_id  -- 关联维度表
+SELECT date_id, count(*) as order_count, sum(order_amount) as gmv
+FROM dwd_fact_orders
 GROUP BY date_id;
 ```
 
-**特点**：
-```yaml
-转换位置：
-  - 在目标系统内完成
-  - 利用目标系统的计算能力
-  
-数据流：
-  - 源系统 → 目标系统（ODS层）
-  - 在目标系统内完成转换
-  
-性能影响：
-  - 原始数据全部进入目标系统
-  - 转换过程占用目标系统资源
-```
+#### 什么时候选 ETL，什么时候选 ELT
 
-#### 二、ETL vs ELT对比
+这不是谁比谁先进的问题——是场景匹配的问题。
 
-##### 2.1 架构对比
+**选 ETL 的场景**：
 
-**ETL架构**：
-```text
-┌──────────┐    抽取     ┌────────────┐    转换     ┌────────────┐    加载     ┌──────────┐
-│ MySQL    │ ────────→ │ ETL服务器  │ ────────→ │ ETL服务器  │ ────────→ │ 数仓PG   │
-│ 业务库    │           │ (原始数据)  │           │ (转换数据)  │           │          │
-└──────────┘           └────────────┘           └────────────┘           └──────────┘
-                              ↑                                              ↑
-                         Python/Java                                   SQL
-                         Spark/Pandas
-```
+- 源库性能敏感。核心交易系统的 MySQL 实例不能承受额外的计算负载。ETL 在独立服务器上完成所有转换，源库只负责一次数据抽取。
+- 转换逻辑复杂。需要用外部 API 做数据增强（比如调用地址解析服务把经纬度转成城市名）、需要复杂的机器学习特征工程。SQL 写不了这些。
+- 合规要求严格。金融数据在进入数仓之前必须脱敏——身份证号、手机号必须先在 ETL 服务器上处理掉，原始敏感数据不进数仓。
 
-**ELT架构**：
-```text
-┌──────────┐    抽取+加载  ┌──────────┐    转换     ┌──────────┐
-│ MySQL    │ ───────────→ │ 数仓PG   │ ────────→ │ 数仓PG   │
-│ 业务库    │    (CDC)     │ (ODS层)  │    (SQL)   │ (DWD层)  │
-└──────────┘              └──────────┘           └──────────┘
-                                                        ↓
-                                                   SQL在数仓内
-                                                   完成转换
-```
+**选 ELT 的场景**：
 
-##### 2.2 详细对比
+- 数据量大（每天 TB 级）。现代云数仓（Snowflake、BigQuery）的计算能力远超独立的 ETL 服务器。把 TB 级数据在数仓内用大规模并行计算转换，比在一台 ETL 服务器上处理快得多。
+- 云原生数仓。Snowflake、BigQuery、Redshift 的设计哲学就是 ELT——原始数据先落地，转换用 SQL 在数仓内推。这些数仓的查询优化器专为这种大 SQL 转换优化过。
+- 团队 SQL 能力强。数据分析师擅长 SQL，用 dbt 写转换逻辑比用 Python 写 ETL 门槛低。转化率定义变了，数据分析师自己改 dbt 模型就行，不用找数据工程师写 Python。
 
-| 维度 | ETL | ELT |
-|------|-----|-----|
-| **转换位置** | 独立的ETL服务器 | 目标系统内 |
-| **数据流** | 源系统 → ETL → 目标系统 | 源系统 → 目标系统 |
-| **工具** | Informatica, Talend, Python, Spark | Fivetran, Airbyte, dbt |
-| **编程语言** | Python, Java, Scala | SQL |
-| **性能** | 转换不影响源系统和目标系统 | 转换占用目标系统资源 |
-| **数据量** | 适合中低数据量 | 适合大数据量 |
-| **实时性** | 通常批量，延迟高 | 可以近实时 |
-| **成本** | 需要独立的ETL服务器 | 利用目标系统，成本低 |
-| **复杂度** | 需要管理ETL服务器 | 管理简单 |
-| **灵活性** | 高（可以使用任何编程语言） | 中（受限于SQL） |
-| **数据质量** | 转换后数据质量高 | 需要在数仓内保证质量 |
-| **调试** | 容易调试 | SQL调试相对简单 |
+**判断标准**：
 
-##### 2.3 适用场景
+| 条件 | 倾向 |
+|------|------|
+| 每天数据量 < 100GB | ETL 和 ELT 都行，选团队熟悉的 |
+| 每天数据量 100GB - 1TB | ETL 如果转换复杂，ELT 如果转换简单 |
+| 每天数据量 > 1TB | ELT，利用云数仓的计算能力 |
+| 转换需要外部 API 或 ML | ETL，Python/Java 灵活性远超 SQL |
+| 使用 Snowflake/BigQuery | ELT + dbt，原生最佳实践 |
+| 源库是核心交易系统 | ETL，最小化对源库的影响 |
+| 需要实时（秒级） | ETL 和 ELT 都不对——用流处理（第 8 章） |
 
-**ETL适用场景**：
-```yaml
-场景1：数据质量要求高
-  示例：金融数据
-  原因：需要在加载前严格清洗数据
-  
-场景2：数据源系统性能敏感
-  示例：核心交易系统
-  原因：不能影响源系统性能
-  
-场景3：转换逻辑复杂
-  示例：需要复杂的业务规则
-  原因：Python/Java比SQL更灵活
-  
-场景4：多个异构数据源
-  示例：MySQL, MongoDB, API等
-  原因：需要在ETL服务器统一处理
-  
-场景5：数据量中等
-  示例：每天GB级别
-  原因：ETL服务器可以处理
-```
+#### 混合架构是常态
 
-**ELT适用场景**：
-```yaml
-场景1：大数据量
-  示例：每天TB级别
-  原因：现代数仓（Snowflake, BigQuery）计算能力强
-  
-场景2：云原生数仓
-  示例：Snowflake, BigQuery, Redshift
-  原因：这些数仓专为ELT设计
-  
-场景3：快速实施
-  示例：初创公司
-  原因：工具简单，上手快
-  
-场景4：数据源简单
-  示例：主要是关系型数据库
-  原因：CDC工具成熟
-  
-场景5：团队SQL能力强
-  示例：数据分析师为主
-  原因：SQL比Python/Java更容易
-```
+实践中很少纯 ETL 或纯 ELT。常见的混合方式：数据抽取用 CDC 工具（Airbyte、Fivetran）直接加载到 ODS 层（ELT 的 EL 部分），复杂的脱敏和增强逻辑在独立的 Python 服务中处理（ETL 的 T 部分），常规的清洗和聚合用 dbt 在数仓内完成（ELT 的 T 部分）。
 
-#### 三、核心判断：选择ETL还是ELT
+举例：用户地址数据从 MySQL CDC 到 ODS → Python 服务调用地理编码 API 把地址转为经纬度（ELT 做不了的）→ 写回 ODS → dbt 做后续的维度关联和汇总（ELT 擅长的）。
 
-> 核心判断：**根据数据量、技术栈、团队能力选择ETL或ELT，没有绝对的优劣**
+#### ELT 和现代数据栈
 
-**判断标准1：数据量**
-```yaml
-小数据量（< 10GB/天）：
-  → ETL和ELT都可以
-  → 选择团队熟悉的方式
-  
-中等数据量（10GB-1TB/天）：
-  → ETL：如果转换逻辑复杂
-  → ELT：如果转换逻辑简单
-  
-大数据量（> 1TB/天）：
-  → ELT：现代云数仓（Snowflake, BigQuery）
-  → ETL：如果使用Hadoop/Spark
-```
+2026 年，ELT 已经成为新项目的主流选择。背后的驱动力是云数仓的普及和 dbt 的兴起。现代数据栈的典型组合是：Fivetran/Airbyte（抽取+加载） + Snowflake/BigQuery（存储+计算） + dbt（转换）。这个组合让一个 3 人的数据团队就能支撑起每天 TB 级的数据处理。
 
-**判断标准2：技术栈**
-```yaml
-传统数仓（Oracle, SQL Server）：
-  → ETL：使用Informatica, Talend
-  
-云数仓（Snowflake, BigQuery）：
-  → ELT：使用Fivetran + dbt
-  
-开源数仓（PostgreSQL, MySQL）：
-  → ETL：使用Python + Airflow
-  → ELT：使用Airbyte + dbt
-```
+但 ETL 没有消失。在你需要复杂转换、外部依赖、敏感数据脱敏的场景，独立的 ETL 服务仍然是更好的选择。两者不是替代关系，是分工。
 
-**判断标准3：团队能力**
-```yaml
-强工程能力（Python/Java/Scala）：
-  → ETL：更灵活
-  
-强SQL能力：
-  → ELT：更简单
-  
-混合团队：
-  → ELT：降低门槛
-```
+#### 常见误区
 
-**判断标准4：实时性要求**
-```yaml
-准实时（分钟级）：
-  → ELT：使用CDC
-  
-批量（小时级、天级）：
-  → ETL和ELT都可以
-  
-实时（秒级）：
-  → 流处理（Kafka + Flink）
-  → 超出ETL/ELT范畴
-```
+**"ELT 比 ETL 更先进"**。不存在先进与否。ELT 适合云数仓 + SQL 转换的场景，ETL 适合复杂转换 + 敏感源库的场景。选择取决于约束条件，不取决于趋势。
 
-#### 四、实施示例
+**"ELT 不需要转换"**。ELT 的 T 在 Load 之后，转换仍然需要——只是换到了数仓内部用 SQL 完成。转换的工作量和 ETL 一样，位置不同。
 
-##### 4.1 ETL实施（Python + PostgreSQL）
+**"必须二选一"**。混合架构是常态。CDC 负责抽取加载（EL），Python 负责复杂转换（ETL 的 T），dbt 负责常规转换（ELT 的 T）。
 
-**架构**：
-```text
-MySQL → Python脚本 → PostgreSQL
-        (ETL)
-```
+#### 小结
 
-**代码**：
-```python
-import pandas as pd
-import pymysql
-import psycopg2
-from datetime import datetime
-
-# ETL配置
-MYSQL_CONFIG = {
-    'host': 'mysql-server',
-    'user': 'root',
-    'password': 'password',
-    'database': 'business_db'
-}
-
-PG_CONFIG = {
-    'host': 'postgres-server',
-    'user': 'postgres',
-    'password': 'password',
-    'database': 'data_warehouse'
-}
-
-# Extract
-def extract_orders(start_date, end_date):
-    conn = pymysql.connect(**MYSQL_CONFIG)
-    
-    query = f"""
-        SELECT 
-            order_id,
-            user_id,
-            product_id,
-            order_amount,
-            order_status,
-            created_at
-        FROM orders
-        WHERE DATE(created_at) BETWEEN '{start_date}' AND '{end_date}'
-    """
-    
-    df = pd.read_sql(query, conn)
-    conn.close()
-    
-    print(f"Extracted {len(df)} orders from MySQL")
-    return df
-
-# Transform
-def transform_orders(df):
-    # 清洗：过滤无效数据
-    df = df[df['order_amount'] > 0]
-    df = df[df['user_id'].notna()]
-    df = df[df['order_status'] == 'completed']
-    
-    # 转换：生成date_id
-    df['order_date'] = pd.to_datetime(df['created_at']).dt.date
-    df['date_id'] = df['order_date'].apply(
-        lambda x: int(x.strftime('%Y%m%d'))
-    )
-    
-    # 关联：获取用户城市
-    conn = pymysql.connect(**MYSQL_CONFIG)
-    df_users = pd.read_sql('SELECT user_id, city FROM users', conn)
-    conn.close()
-    
-    df = df.merge(df_users, on='user_id', how='left')
-    
-    print(f"Transformed to {len(df)} valid orders")
-    return df
-
-# Load
-def load_orders(df):
-    conn = psycopg2.connect(**PG_CONFIG)
-    cursor = conn.cursor()
-    
-    # 清空目标表（可选）
-    # cursor.execute("TRUNCATE TABLE dwd_fact_orders")
-    
-    # 插入数据
-    for _, row in df.iterrows():
-        cursor.execute("""
-            INSERT INTO dwd_fact_orders 
-            (order_id, date_id, user_id, product_id, order_amount, city, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (order_id) DO NOTHING
-        """, (
-            row['order_id'],
-            row['date_id'],
-            row['user_id'],
-            row['product_id'],
-            row['order_amount'],
-            row['city'],
-            row['created_at']
-        ))
-    
-    conn.commit()
-    cursor.close()
-    conn.close()
-    
-    print(f"Loaded {len(df)} orders to PostgreSQL")
-
-# 完整ETL流程
-def etl_orders(start_date, end_date):
-    print(f"Starting ETL for {start_date} to {end_date}")
-    
-    # Extract
-    df = extract_orders(start_date, end_date)
-    
-    # Transform
-    df = transform_orders(df)
-    
-    # Load
-    load_orders(df)
-    
-    print("ETL completed successfully")
-
-# 执行
-if __name__ == '__main__':
-    # 处理昨天的数据
-    yesterday = (datetime.now() - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
-    etl_orders(yesterday, yesterday)
-```
-
-##### 4.2 ELT实施（Airbyte + dbt + PostgreSQL）
-
-**架构**：
-```text
-MySQL → Airbyte(CDC) → PostgreSQL(ODS) → dbt(Transform) → PostgreSQL(DWD)
-```
-
-**第1步：配置Airbyte（抽取+加载）**
-```yaml
-# Airbyte配置文件
-source:
-  type: postgres
-  host: mysql-server
-  port: 3306
-  database: business_db
-  username: root
-  password: password
-
-destination:
-  type: postgres
-  host: postgres-server
-  port: 5432
-  database: data_warehouse
-  username: postgres
-  password: password
-
-streams:
-  - name: orders
-    namespace: public
-    destination_namespace: ods
-    sync_mode: full_refresh_overwrite  # 或 cdc_incremental
-```
-
-**第2步：配置dbt（转换）**
-
-```sql
--- models/dwd_fact_orders.sql
-
--- DWD层：清洗后的订单事实表
-{{ config(
-    materialized='table',
-    schema='dwd'
-) }}
-
-SELECT 
-    order_id,
-    CAST(TO_DATE(created_at) AS INTEGER) as date_id,
-    user_id,
-    product_id,
-    order_amount,
-    order_status
-FROM {{ source('ods', 'orders') }}
-WHERE order_amount > 0              -- 清洗：过滤负数订单
-  AND user_id IS NOT NULL           -- 清洗：过滤空用户ID
-  AND order_status = 'completed';   -- 清洗：只保留已完成订单
-```
-
-```sql
--- models/dws_daily_gmv.sql
-
--- DWS层：每日GMV汇总
-{{ config(
-    materialized='table',
-    schema='dws'
-) }}
-
-SELECT 
-    date_id,
-    COUNT(*) as order_count,
-    SUM(order_amount) as gmv
-FROM {{ ref('dwd_fact_orders') }}
-GROUP BY date_id;
-```
-
-**第3步：执行ELT**
-```bash
-# Airbyte自动同步（CDC）
-# 无需手动执行
-
-# dbt执行转换
-dbt run
-
-# 生成文档
-dbt docs generate
-dbt docs serve
-```
-
-#### 五、常见误区
-
-**误区一：ELT比ETL更先进**
-
-- **说明**：ELT和ETL各有优劣，没有绝对优劣
-- **后果**：盲目选择ELT，可能不适合场景
-- **正确理解**：
-  - ETL适合复杂转换、敏感源系统
-  - ELT适合大数据量、云原生数仓
-  - 根据场景选择
-
-**误区二：ELT不需要转换**
-
-- **说明**：ELT也需要转换，只是转换位置不同
-- **后果**：误解ELT的含义
-- **正确理解**：
-  - ELT的T在Load之后
-  - 转换在目标系统内完成
-  - 不是没有转换
-
-**误区三：ETL是传统方法**
-
-- **说明**：ETL仍然是主流方法之一
-- **后果**：忽视ETL的价值
-- **正确理解**：
-  - ETL适合很多场景
-  - 云时代也有应用
-  - 不是过时技术
-
-**误区四：必须二选一**
-
-- **说明**：可以混合使用ETL和ELT
-- **后果**：限制设计选择
-- **正确理解**：
-  - 可以ETL处理某些数据源
-  - 可以ELT处理其他数据源
-  - 混合架构
-
-**误区五：ELT更简单**
-
-- **说明**：ELT看似简单，但需要管理数仓内的转换
-- **后果**：低估复杂度
-- **正确理解**：
-  - ELT工具简单
-  - 但转换逻辑需要管理
-  - 数据质量需要保证
-
-#### 六、实战任务
-
-**任务1：判断使用ETL还是ELT**
-
-场景1：金融公司，数据量10GB/天，核心交易系统
-```yaml
-决策：
-  → 使用ETL
-  
-原因：
-  - 数据质量要求高
-  - 源系统性能敏感
-  - 转换逻辑复杂（金融规则）
-```
-
-场景2：初创公司，数据量1TB/天，使用Snowflake
-```yaml
-决策：
-  → 使用ELT
-  
-原因：
-  - 数据量大
-  - 云原生数仓
-  - 团队小，需要快速实施
-```
-
-**任务2：设计ETL流程**
-
-设计一个ETL流程：
-```python
-# 需求：从MySQL同步用户数据到PostgreSQL
-
-# 1. Extract
-def extract_users():
-    conn = pymysql.connect(**MYSQL_CONFIG)
-    df = pd.read_sql('SELECT * FROM users WHERE updated_at >= LAST_SYNC', conn)
-    conn.close()
-    return df
-
-# 2. Transform
-def transform_users(df):
-    # 数据清洗
-    df = df[df['email'].notna()]
-    df = df[df['email'].str.contains('@')]
-    
-    # 数据转换
-    df['register_date'] = pd.to_datetime(df['created_at']).dt.date
-    df['date_id'] = df['register_date'].apply(lambda x: int(x.strftime('%Y%m%d')))
-    
-    return df
-
-# 3. Load
-def load_users(df):
-    conn = psycopg2.connect(**PG_CONFIG)
-    cursor = conn.cursor()
-    
-    for _, row in df.iterrows():
-        cursor.execute("""
-            INSERT INTO dim_users 
-            (user_id, name, email, city, date_id)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (user_id) DO UPDATE SET
-                name = EXCLUDED.name,
-                email = EXCLUDED.email,
-                city = EXCLUDED.city
-        """, (row['user_id'], row['name'], row['email'], row['city'], row['date_id']))
-    
-    conn.commit()
-    conn.close()
-
-# 执行
-df = extract_users()
-df = transform_users(df)
-load_users(df)
-```
-
-**任务3：对比ETL和ELT的优缺点**
-
-对比：
-```yaml
-ETL优点：
-  - 转换不影响源系统和目标系统
-  - 可以使用任意编程语言
-  - 转换逻辑灵活
-  - 容易调试
-  
-ETL缺点：
-  - 需要独立的ETL服务器
-  - 需要管理ETL代码
-  - 学习曲线陡峭
-  - 维护成本高
-
-ELT优点：
-  - 架构简单
-  - 利用目标系统计算能力
-  - 工具简单，上手快
-  - 维护成本低
-  
-ELT缺点：
-  - 原始数据全部进入目标系统
-  - 转换占用目标系统资源
-  - SQL灵活性有限
-  - 数据质量需要在目标系统保证
-```
-
-#### 七、小结
-
-ETL和ELT是两种不同的数据集成策略，ETL先转换后加载，ELT先加载后转换。
-
-核心要点：
-- ETL：Extract-Transform-Load，转换在独立的ETL服务器
-- ELT：Extract-Load-Transform，转换在目标系统内
-- 对比：转换位置、工具、性能、成本各有特点
-- 选择：根据数据量、技术栈、团队能力选择
-- ETL场景：数据质量要求高、转换逻辑复杂、源系统敏感
-- ELT场景：大数据量、云原生数仓、快速实施
-- 混合架构：可以混合使用ETL和ELT
-
-下一节将学习数据抽取，了解如何从源系统抽取数据。
+ETL 先转换后加载（独立服务器做转换），ELT 先加载后转换（数仓内做转换）。选型的核心变量：数据量、转换复杂度、源库性能敏感度、团队技能。混合架构是工程实践的自然选择。下一节展开数据抽取的具体方法——全量、增量、CDC 怎么实现。
 
 ### 6.2 数据抽取
 
-上一节学习了ETL vs ELT，了解了两种不同的数据集成策略。
+不管是 ETL 还是 ELT，第一步永远是从源系统抽取数据。抽取方式直接影响数据管道的时效性、源系统的负载、以及数据完整性。三种方式：全量、增量、CDC。
 
-无论选择ETL还是ELT，第一步都是数据抽取（Extract）。
+#### 全量抽取
 
-**场景**：
-```yaml
-数据仓库项目启动：
-  
-技术经理："先从业务数据库抽取数据吧"
-  
-数据工程师A："我每天全量抽取所有数据"
-  
-数据工程师B："我使用CDC增量抽取变更数据"
-  
-新同事："什么是全量抽取？什么是增量抽取？什么是CDC？"
-```
+每次把源表全部数据拉过来。实现最简单：
 
-**问题**：
-- 什么是数据抽取？
-- 全量抽取 vs 增量抽取有什么区别？
-- 如何实现CDC（Change Data Capture）？
-- 应该选择哪种抽取方式？
-
-**答案**：**根据数据量、性能要求、实时性要求，选择全量抽取、增量抽取或CDC**
-
-#### 一、为什么数据抽取很重要
-
-**第一，数据抽取是ETL/ELT的第一步**
-
-```yaml
-ETL流程：
-  Extract（抽取）→ Transform（转换）→ Load（加载）
-      ↑
-    第一步
-
-ELT流程：
-  Extract（抽取）→ Load（加载）→ Transform（转换）
-      ↑
-    第一步
-```
-
-**第二，抽取方式影响整个数据链路**
-
-```yaml
-全量抽取：
-  优点：简单、可靠
-  缺点：数据量大、耗时长、影响源系统
-  
-增量抽取：
-  优点：数据量小、快速
-  缺点：复杂、需要追踪变化
-  
-CDC：
-  优点：实时、数据量小
-  缺点：复杂、需要CDC工具
-```
-
-**第三，抽取方式影响数据质量**
-
-```yaml
-全量抽取：
-  - 数据一致性好
-  - 但可能有重复数据
-  
-增量抽取：
-  - 需要准确识别变化
-  - 可能遗漏数据
-  
-CDC：
-  - 捕获所有变更
-  - 需要处理删除操作
-```
-
-#### 二、数据抽取的类型
-
-##### 2.1 全量抽取
-
-**定义**：每次抽取全部数据
-
-**示例**：
 ```sql
--- 全量抽取SQL
--- 每天执行一次，抽取所有订单
-
-DELETE FROM ods_orders;  -- 清空目标表
-
+-- 每天全量抽取（清空 ODS 后重灌）
+TRUNCATE TABLE ods_orders;
 INSERT INTO ods_orders
-SELECT 
-    order_id,
-    user_id,
-    product_id,
-    order_amount,
-    order_status,
-    created_at,
-    updated_at
-FROM business_db.orders;  -- 抽取全部数据
-
-COMMIT;
+SELECT order_id, user_id, product_id, order_amount, order_status, created_at, updated_at
+FROM business_db.orders;
 ```
 
-**特点**：
-```yaml
-数据量：
-  - 每次抽取全部数据
-  - 数据量大
-  
-时间：
-  - 耗时长
-  - 占用源系统资源
-  
-简单性：
-  - 实现简单
-  - 不需要追踪变化
-  
-一致性：
-  - 数据一致性好
-  - 但可能有重复
-```
+全量抽取的优点是不需要追踪变化——不需要源表有 `updated_at` 字段，不需要关心 UPDATE 和 DELETE。缺点是数据量越大越慢。一张 5000 万行的订单表，全量抽取一次大概 30 分钟，期间持续占用源库的 I/O 和网络带宽。
 
-**适用场景**：
-```yaml
-场景1：小表
-  示例：字典表、配置表
-  原因：数据量小，全量抽取快
-  
-场景2：频繁变化的表
-  示例：状态表
-  原因：增量追踪困难
-  
-场景3：数据量不大的表
-  示例：< 100万行
-  原因：全量抽取可接受
-```
+适用场景明确：小表（< 100 万行）、字典表、配置表。对这些表，全量抽取比增量抽取更可靠（不用担心漏数据）。另外，首次初始化必须全量——先全量拉一份基线，之后才切换到增量。
 
-##### 2.2 增量抽取
+#### 增量抽取
 
-**定义**：只抽取变化的数据（新增、修改）
+只抽取发生变化的数据。最常用的方式是基于时间戳：
 
-**示例**：
 ```sql
--- 增量抽取SQL（基于时间戳）
--- 每天执行一次，只抽取昨天变更的数据
-
+-- 增量抽取：只拉取上次同步后更新的数据
 INSERT INTO ods_orders
-SELECT 
-    order_id,
-    user_id,
-    product_id,
-    order_amount,
-    order_status,
-    created_at,
-    updated_at
+SELECT order_id, user_id, product_id, order_amount, order_status, created_at, updated_at
 FROM business_db.orders
-WHERE updated_at >= CURRENT_DATE - INTERVAL '1 day'  -- 只抽取昨天更新的数据
-  AND updated_at < CURRENT_DATE;
+WHERE updated_at >= (
+    SELECT last_sync_time FROM etl_logs
+    WHERE table_name = 'ods_orders'
+    ORDER BY sync_id DESC LIMIT 1
+);
 
-COMMIT;
+-- 更新同步时间
+UPDATE etl_logs SET last_sync_time = NOW()
+WHERE table_name = 'ods_orders';
 ```
 
-**特点**：
-```yaml
-数据量：
-  - 只抽取变化数据
-  - 数据量小
-  
-时间：
-  - 耗时短
-  - 占用源系统资源少
-  
-复杂度：
-  - 需要追踪变化
-  - 需要updated_at字段
-  
-一致性：
-  - 可能遗漏数据
-  - 需要处理删除
+增量抽取的前提是源表有 `updated_at` 字段且有索引。如果没有，有两个替代方案：
+
+- **基于自增 ID**：只拉取 `order_id > last_max_id` 的行。问题是只能检测到 INSERT，检测不到 UPDATE 和 DELETE。
+- **基于触发器**：在源表上创建触发器，把变化记录到一张变更日志表（change_log），ETL 从日志表抽取。能捕获所有变更（INSERT/UPDATE/DELETE），但触发器会拖慢源库的写入性能——每笔订单 INSERT 都会触发一次额外的日志写入。
+
+增量抽取的盲区是 DELETE。时间戳和自增 ID 都感知不到 DELETE。如果源库物理删除了行，你的 ODS 层会一直保留着这些已删除的数据。解决办法：用软删除（源表用 `is_deleted` 字段标记而不是物理删除），或者用 CDC。
+
+#### CDC（Change Data Capture）
+
+CDC 是数据库层面提供的变更捕获机制——MySQL 的 Binlog、PostgreSQL 的 WAL（Write-Ahead Log）。数据库的每一次 INSERT/UPDATE/DELETE 都会记录在这些日志里，CDC 工具解析日志，把变更事件流式推送出来。
+
+以 Debezium + Kafka 为例：
+
+```
+MySQL Binlog → Debezium → Kafka Topic → 消费者 → ODS 层
 ```
 
-**适用场景**：
-```yaml
-场景1：大表
-  示例：订单表、用户表
-  原因：数据量大，增量抽取必要
-  
-场景2：有updated_at字段
-  示例：业务表有更新时间
-  原因：可以追踪变化
-  
-场景3：只追加，不删除
-  示例：日志表、事件表
-  原因：增量追踪简单
+每条 Kafka 消息包含变更前后的数据：
+
+```json
+{
+    "before": {"order_id": 12345, "order_amount": 100.00, "order_status": "pending"},
+    "after":  {"order_id": 12345, "order_amount": 100.00, "order_status": "completed"},
+    "op": "u",     // c=create, u=update, d=delete
+    "ts_ms": 1641234567890
+}
 ```
 
-##### 2.3 CDC（Change Data Capture）
+消费端逻辑：
 
-**定义**：捕获数据变更日志，包括INSERT、UPDATE、DELETE
-
-**示例**：
 ```python
-# CDC示例（使用Debezium + Kafka）
-
-# Debezium配置
-{
-    "database.hostname": "mysql-server",
-    "database.port": "3306",
-    "database.user": "debezium",
-    "database.password": "dbz",
-    "database.server.id": "184054",
-    "database.server.name": "customer",
-    "database.include.list": "business_db",
-    "table.include.list": "business_db.orders",
-    "database.history.kafka.bootstrap.servers": "kafka:9092",
-    "database.history.kafka.topic": "schema-changes.business_db"
-}
-
-# CDC事件示例（Kafka消息）
-{
-    "before": {  # 变更前的数据
-        "order_id": 12345,
-        "order_amount": 100.00,
-        "order_status": "pending"
-    },
-    "after": {  # 变更后的数据
-        "order_id": 12345,
-        "order_amount": 100.00,
-        "order_status": "completed"
-    },
-    "op": "u",  # 操作类型：c=create, u=update, d=delete
-    "ts_ms": 1641234567890  # 时间戳
-}
-
-# 消费CDC事件
-from kafka import KafkaConsumer
-import json
-
-consumer = KafkaConsumer(
-    'customer.business_db.orders',
-    bootstrap_servers=['kafka:9092'],
-    auto_offset_reset='earliest',
-    enable_auto_commit=True,
-    group_id='etl-group',
-    value_deserializer=lambda x: json.loads(x.decode('utf-8'))
-)
+consumer = KafkaConsumer('customer.business_db.orders', ...)
 
 for message in consumer:
     event = message.value
-    
-    if event['op'] == 'c':  # INSERT
-        handle_insert(event['after'])
-    elif event['op'] == 'u':  # UPDATE
-        handle_update(event['before'], event['after'])
-    elif event['op'] == 'd':  # DELETE
-        handle_delete(event['before'])
+    if event['op'] == 'c':       # INSERT
+        insert_to_ods(event['after'])
+    elif event['op'] == 'u':     # UPDATE
+        update_in_ods(event['after'])
+    elif event['op'] == 'd':     # DELETE
+        delete_from_ods(event['before']['order_id'])
 ```
 
-**特点**：
-```yaml
-数据量：
-  - 只捕获变更
-  - 数据量最小
-  
-实时性：
-  - 近实时
-  - 秒级延迟
-  
-完整性：
-  - 捕获所有变更
-  - 包括DELETE
-  
-复杂度：
-  - 需要CDC工具
-  - 需要消息队列
-  - 实现复杂
-```
+CDC 的优势：实时性（秒级延迟）、完整性（捕获所有变更类型）、无侵入性（不影响源库查询性能，Debezium 只是读取日志文件）。代价是架构复杂度——你需要维护 Kafka 集群、管理 CDC connector、监控消费延迟。
 
-**适用场景**：
-```yaml
-场景1：需要实时数据
-  示例：实时报表
-  原因：CDC是实时的
-  
-场景2：大数据量
-  示例：每天TB级别
-  原因：CDC数据量小
-  
-场景3：需要捕获DELETE
-  示例：数据同步
-  原因：CDC捕获所有变更
-```
+#### 怎么选
 
-#### 三、增量抽取的实现方式
+经验规则：
 
-##### 3.1 基于时间戳
+- **表 < 100 万行** → 全量抽取。简单可靠。
+- **表 > 100 万行，不需要实时** → 增量抽取（基于时间戳）。每天 T+1 批处理。
+- **需要实时或无法容忍数据丢失** → CDC。核心业务表（订单、支付）、需要分钟级新鲜度的场景。
+- **混合策略**：小表全量、大表增量、核心表 CDC。一个数仓通常同时用这三种。
 
-**方法**：使用updated_at字段
+全量 vs 增量的性能差异：一张 5000 万行的表，全量 30 分钟，增量（每天 10 万行新增）3 分钟——10 倍差距。对源库的影响也是 10 倍差距。这就是为什么大表必须增量。
 
-```sql
--- 第1次全量抽取
-CREATE TABLE ods_orders AS
-SELECT * FROM business_db.orders;
+#### 常见误区
 
--- 记录抽取时间
-INSERT INTO etl_logs (table_name, last_sync_time)
-VALUES ('ods_orders', NOW());
+**"全量抽取最简单所以用全量"**。数据量小时全量确实简单。但很多团队在全量抽取还没出问题时就养成了习惯，等到表涨到千万级才发现每天 ETL 跑 2 小时还跑不完。一开始就按表的大小选择策略。
 
--- 第2次增量抽取
-INSERT INTO ods_orders
-SELECT 
-    order_id,
-    user_id,
-    product_id,
-    order_amount,
-    order_status,
-    created_at,
-    updated_at
-FROM business_db.orders
-WHERE updated_at >= (
-    SELECT last_sync_time 
-    FROM etl_logs 
-    WHERE table_name = 'ods_orders'
-    ORDER BY sync_id DESC 
-    LIMIT 1
-);
+**"增量抽取会遗漏数据"**。正确实现的增量抽取（记录 last_sync_time，使用 `>= `而不是 `>`）不会遗漏。需要处理的是边界情况：同一秒内有多条记录更新，`>=` 会重复抽取上次边界的数据——用 `ON CONFLICT DO UPDATE` 做幂等处理就行了。
 
--- 更新抽取时间
-UPDATE etl_logs 
-SET last_sync_time = NOW() 
-WHERE table_name = 'ods_orders';
-```
+**"CDC 一定需要 Kafka"**。Debezium 的典型部署依赖 Kafka，但不是必须。Debezium 有 embedded 模式（直接嵌入 Java 应用消费变更），也有支持直接写目标库的连接器。不过在生产环境里，Kafka 提供的消息持久化和解耦能力确实值得这个架构成本。
 
-**优点**：
-```yaml
-简单：
-  - 实现简单
-  - 只需要updated_at字段
-```
+**"触发器是好的 CDC 方案"**。触发器会拖慢源库的写入性能。每个 INSERT 触发一次额外的日志表写入——如果源库每秒 1000 笔写入，触发器在此基础上再加 1000 次写入。Binlog/WAL 方案不影响源库性能，因为它只是读取已有的日志文件。
 
-**缺点**：
-```yaml
-遗漏删除：
-  - 无法捕获DELETE操作
-  
-时间精度：
-  - 依赖时间戳精度
-  - 可能遗漏同一秒的变更
-  
-性能问题：
-  - 需要在updated_at上建索引
-```
+#### 小结
 
-##### 3.2 基于自增ID
-
-**方法**：使用自增主键
-
-```sql
--- 第1次全量抽取
-CREATE TABLE ods_orders AS
-SELECT * FROM business_db.orders;
-
--- 记录最大ID
-INSERT INTO etl_logs (table_name, last_max_id)
-VALUES ('ods_orders', (SELECT MAX(order_id) FROM business_db.orders));
-
--- 第2次增量抽取
-INSERT INTO ods_orders
-SELECT 
-    order_id,
-    user_id,
-    product_id,
-    order_amount,
-    order_status,
-    created_at,
-    updated_at
-FROM business_db.orders
-WHERE order_id > (
-    SELECT last_max_id 
-    FROM etl_logs 
-    WHERE table_name = 'ods_orders'
-    ORDER BY sync_id DESC 
-    LIMIT 1
-);
-
--- 更新最大ID
-UPDATE etl_logs 
-SET last_max_id = (SELECT MAX(order_id) FROM business_db.orders)
-WHERE table_name = 'ods_orders';
-```
-
-**优点**：
-```yaml
-性能好：
-  - 主键查询快
-  
-简单：
-  - 实现简单
-```
-
-**缺点**：
-```yaml
-只捕获新增：
-  - 无法捕获UPDATE
-  - 无法捕获DELETE
-  
-问题：
-  - 如果ID重置，会出问题
-```
-
-##### 3.3 基于触发器
-
-**方法**：使用数据库触发器
-
-```sql
--- 创建变更表
-CREATE TABLE orders_changes (
-    change_id SERIAL PRIMARY KEY,
-    order_id BIGINT,
-    change_type VARCHAR(10),  -- INSERT, UPDATE, DELETE
-    change_data JSONB,
-    change_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- 创建触发器函数
-CREATE OR REPLACE FUNCTION log_order_changes()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF TG_OP = 'INSERT' THEN
-        INSERT INTO orders_changes (order_id, change_type, change_data)
-        VALUES (NEW.order_id, 'INSERT', row_to_json(NEW)::jsonb);
-        
-    ELSIF TG_OP = 'UPDATE' THEN
-        INSERT INTO orders_changes (order_id, change_type, change_data)
-        VALUES (NEW.order_id, 'UPDATE', row_to_json(NEW)::jsonb);
-        
-    ELSIF TG_OP = 'DELETE' THEN
-        INSERT INTO orders_changes (order_id, change_type, change_data)
-        VALUES (OLD.order_id, 'DELETE', row_to_json(OLD)::jsonb);
-    END IF;
-    
-    RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
-
--- 创建触发器
-CREATE TRIGGER trigger_order_changes
-AFTER INSERT OR UPDATE OR DELETE ON business_db.orders
-FOR EACH ROW
-EXECUTE FUNCTION log_order_changes();
-
--- 增量抽取：从变更表抽取
-INSERT INTO ods_orders
-SELECT 
-    change_data->>'order_id' as order_id,
-    change_data->>'user_id' as user_id,
-    change_data->>'product_id' as product_id,
-    change_data->>'order_amount' as order_amount,
-    change_data->>'order_status' as order_status,
-    change_data->>'created_at' as created_at,
-    change_data->>'updated_at' as updated_at
-FROM orders_changes
-WHERE change_time >= (
-    SELECT last_sync_time 
-    FROM etl_logs 
-    WHERE table_name = 'ods_orders'
-    ORDER BY sync_id DESC 
-    LIMIT 1
-);
-
--- 处理DELETE
-DELETE FROM ods_orders
-WHERE order_id IN (
-    SELECT change_data->>'order_id'
-    FROM orders_changes
-    WHERE change_type = 'DELETE'
-    AND change_time >= (
-        SELECT last_sync_time 
-        FROM etl_logs 
-        WHERE table_name = 'ods_orders'
-        ORDER BY sync_id DESC 
-        LIMIT 1
-    )
-);
-```
-
-**优点**：
-```yaml
-完整性：
-  - 捕获所有变更
-  - 包括DELETE
-  
-实时性：
-  - 实时捕获
-```
-
-**缺点**：
-```yaml
-性能影响：
-  - 触发器影响源系统性能
-  
-复杂度：
-  - 需要维护触发器
-  - 需要维护变更表
-```
-
-#### 四、CDC的实现方式
-
-##### 4.1 基于Binlog（MySQL）
-
-**工具**：Debezium, Canal, Maxwell
-
-**原理**：解析MySQL Binlog
-
-```bash
-# Debezium配置
-{
-    "name": "orders-connector",
-    "config": {
-        "connector.class": "io.debezium.connector.mysql.MySqlConnector",
-        "database.hostname": "mysql-server",
-        "database.port": "3306",
-        "database.user": "debezium",
-        "database.password": "dbz",
-        "database.server.id": "184054",
-        "database.server.name": "customer",
-        "database.include.list": "business_db",
-        "table.include.list": "business_db.orders",
-        "database.history.kafka.bootstrap.servers": "kafka:9092",
-        "database.history.kafka.topic": "schema-changes.business_db",
-        "include.schema.changes": "false",
-        "snapshot.mode": "schema_only"
-    }
-}
-```
-
-**优点**：
-```yaml
-实时：
-  - 秒级延迟
-  
-完整性：
-  - 捕获所有变更
-  - 包括DELETE
-  
-无侵入：
-  - 不影响源系统
-```
-
-**缺点**：
-```yaml
-复杂：
-  - 需要Kafka
-  - 需要CDC工具
-```
-
-##### 4.2 基于WAL（PostgreSQL）
-
-**工具**：Debezium, pg_logical
-
-**原理**：解析PostgreSQL WAL
-
-```sql
--- 创建逻辑复制槽
-SELECT * FROM pg_create_logical_replication_slot('orders_slot', 'pgoutput');
-
--- 读取WAL
-SELECT * FROM pg_logical_slot_peek_changes('orders_slot', NULL, NULL);
-
--- 消费WAL
-SELECT * FROM pg_logical_slot_get_changes('orders_slot', NULL, NULL);
-```
-
-**优点**：
-```yaml
-实时：
-  - 秒级延迟
-  
-完整性：
-  - 捕获所有变更
-  - 包括DELETE
-  
-原生支持：
-  - PostgreSQL原生支持
-```
-
-**缺点**：
-```yaml
-复杂：
-  - 需要理解WAL
-  - 需要解析WAL
-```
-
-#### 五、抽取策略选择
-
-##### 5.1 决策树
-
-```yaml
-第1步：数据量多大？
-  小数据量（< 100万行）
-    → 全量抽取
-  
-  大数据量（> 100万行）
-    → 第2步
-
-第2步：是否需要实时？
-  不需要（批量即可）
-    → 增量抽取
-  
-  需要（秒级）
-    → CDC
-  
-第3步：是否有updated_at字段？
-  有
-    → 基于时间戳的增量抽取
-  
-  没有
-    → 基于ID的增量抽取
-    或 CDC
-```
-
-##### 5.2 混合策略
-
-```yaml
-策略：不同表使用不同抽取方式
-  
-小表（字典表、配置表）：
-  → 全量抽取
-  → 每天1次
-  
-大表（订单表、用户表）：
-  → 增量抽取
-  → 每天1次
-  
-核心表（需要实时）：
-  → CDC
-  → 实时
-```
-
-#### 六、常见误区
-
-**误区一：全量抽取最简单**
-
-- **说明**：全量抽取看似简单，但数据量大时会有问题
-- **后果**：影响源系统性能
-- **正确理解**：
-  - 小表可以全量抽取
-  - 大表必须增量抽取
-  - 根据场景选择
-
-**误区二：增量抽取会遗漏数据**
-
-- **说明**：正确实现的增量抽取不会遗漏数据
-- **后果**：不敢使用增量抽取
-- **正确理解**：
-  - 使用updated_at字段
-  - 记录每次抽取时间
-  - 不会遗漏数据
-
-**误区三：CDC很复杂**
-
-- **说明**：CDC工具已经成熟，使用不复杂
-- **后果**：不敢使用CDC
-- **正确理解**：
-  - 工具成熟（Debezium）
-  - 配置简单
-  - 容易上手
-
-**误区四：CDC一定需要Kafka**
-
-- **说明**：CDC不一定需要Kafka
-- **后果**：过度设计
-- **正确理解**：
-  - 可以不用Kafka
-  - 可以直接写入目标库
-  - 根据需求选择
-
-**误区五：触发器是实时CDC**
-
-- **说明**：触发器可以捕获变更，但会影响性能
-- **后果**：影响源系统性能
-- **正确理解**：
-  - 触发器影响性能
-  - 不推荐用于大表
-  - 优先使用Binlog/WAL
-
-#### 七、实战任务
-
-**任务1：设计增量抽取**
-
-设计订单表的增量抽取：
-
-```sql
--- 第1步：创建ETL日志表
-CREATE TABLE etl_logs (
-    sync_id SERIAL PRIMARY KEY,
-    table_name VARCHAR(100) NOT NULL,
-    last_sync_time TIMESTAMP NOT NULL,
-    row_count BIGINT NOT NULL,
-    sync_status VARCHAR(50) NOT NULL,
-    sync_start_time TIMESTAMP,
-    sync_end_time TIMESTAMP,
-    error_message TEXT
-);
-
--- 第2步：全量初始化
-INSERT INTO ods_orders
-SELECT 
-    order_id,
-    user_id,
-    product_id,
-    order_amount,
-    order_status,
-    created_at,
-    updated_at
-FROM business_db.orders;
-
--- 记录同步
-INSERT INTO etl_logs (table_name, last_sync_time, row_count, sync_status, sync_start_time, sync_end_time)
-VALUES (
-    'ods_orders',
-    NOW(),
-    (SELECT count(*) FROM business_db.orders),
-    'success',
-    NOW(),
-    NOW()
-);
-
--- 第3步：增量抽取（每天执行）
-INSERT INTO ods_orders
-SELECT 
-    order_id,
-    user_id,
-    product_id,
-    order_amount,
-    order_status,
-    created_at,
-    updated_at
-FROM business_db.orders
-WHERE updated_at >= (
-    SELECT last_sync_time 
-    FROM etl_logs 
-    WHERE table_name = 'ods_orders'
-    ORDER BY sync_id DESC 
-    LIMIT 1
-)
-ON CONFLICT (order_id) DO UPDATE SET
-    user_id = EXCLUDED.user_id,
-    product_id = EXCLUDED.product_id,
-    order_amount = EXCLUDED.order_amount,
-    order_status = EXCLUDED.order_status,
-    updated_at = EXCLUDED.updated_at;
-
--- 记录同步
-INSERT INTO etl_logs (table_name, last_sync_time, row_count, sync_status, sync_start_time, sync_end_time)
-VALUES (
-    'ods_orders',
-    NOW(),
-    (SELECT count(*) FROM business_db.orders WHERE updated_at >= ...),
-    'success',
-    NOW(),
-    NOW()
-);
-```
-
-**任务2：对比抽取方式**
-
-对比：
-```yaml
-全量抽取：
-  SQL: SELECT * FROM orders
-  数据量：1000万行
-  耗时：30分钟
-  影响：影响源系统30分钟
-  
-增量抽取：
-  SQL: SELECT * FROM orders WHERE updated_at >= ...
-  数据量：10万行
-  耗时：3分钟
-  影响：影响源系统3分钟
-  
-CDC：
-  工具：Debezium
-  数据量：1万行
-  延迟：秒级
-  影响：几乎不影响
-```
-
-**任务3：选择抽取策略**
-
-场景：
-```yaml
-表1：用户表（1000万行，有updated_at字段）
-  → 增量抽取（基于时间戳）
-  
-表2：订单表（5000万行，需要实时）
-  → CDC
-  
-表3：字典表（1000行，不常变化）
-  → 全量抽取
-  
-表4：日志表（每天1亿行，只追加）
-  → 增量抽取（基于ID）
-```
-
-#### 八、小结
-
-数据抽取是ETL/ELT的第一步，根据数据量、性能要求、实时性要求选择合适的抽取方式。
-
-核心要点：
-- 全量抽取：简单可靠，适合小表
-- 增量抽取：数据量小，适合大表
-- CDC：实时完整，适合核心表
-- 增量实现：基于时间戳、基于ID、基于触发器
-- CDC实现：基于Binlog（MySQL）、基于WAL（PostgreSQL）
-- 选择策略：根据数据量、实时性要求、技术栈选择
-- 混合策略：不同表使用不同抽取方式
-
-下一节将学习数据转换，了解如何清洗、转换、关联数据。
+三种抽取方式的选择取决于数据量和实时性要求。小表全量，大表增量，核心表 CDC。首次初始化必须全量，之后切换为增量或 CDC。GTID 的消费端逻辑需要处理 INSERT/UPDATE/DELETE 三种事件类型。下一节讲数据抽取之后的事——数据转换（清洗、格式化、关联、聚合）。
 
 ### 6.3 数据转换
 
-上一节学习了数据抽取，了解了全量抽取、增量抽取、CDC等方法。
+数据抽取到 ODS 层后是"生数据"——编码不统一、包含无效值、字段零散、缺少维度信息。转换这一步把生数据加工成分析可用的"熟数据"。转换发生在 ODS → DWD → DWS → ADS 的每一层之间。
 
-数据抽取到ODS层后，需要进行数据转换（Transform），生成DWD层和DWS层的数据。
+#### 五种转换操作
 
-**场景**：
-```yaml
-数据仓库项目：
-  
-数据分析师："ODS层的数据太脏了，有很多无效数据"
-  
-数据工程师："我来清洗和转换数据"
-  
-新同事："什么是数据转换？需要做哪些转换？"
-```
+**数据清洗**。干掉不该进入数仓的数据：
 
-**问题**：
-- 什么是数据转换？
-- 数据转换包含哪些操作？
-- 如何设计数据转换流程？
-- 如何保证数据质量？
-
-**答案**：**数据转换是对抽取的数据进行清洗、格式化、关联、聚合等操作，生成高质量的数据**
-
-#### 一、为什么需要数据转换
-
-**第一，源数据质量不高**
-
-```yaml
-问题1：数据不完整
-  示例：user_id为空、order_amount为NULL
-  影响：无法分析
-  
-问题2：数据不准确
-  示例：order_amount为负数、日期格式错误
-  影响：分析结果错误
-  
-问题3：数据不一致
-  示例：status字段有'completed'和'complete'两种值
-  影响：聚合错误
-```
-
-**第二，源数据不适合直接分析**
-
-```yaml
-问题1：数据分散
-  示例：订单表只有user_id，没有用户城市
-  解决：关联用户维度表
-  
-问题2：粒度不符合
-  示例：源表是明细数据，需要每日汇总
-  解决：聚合计算
-  
-问题3：格式不统一
-  示例：日期格式有'2026-01-01'和'01/01/2026'
-  解决：统一格式
-```
-
-**第三，业务规则需要应用**
-
-```yaml
-规则1：数据过滤
-  示例：只分析已完成订单
-  转换：过滤order_status='completed'
-  
-规则2：数据计算
-  示例：GMV = 订单金额 - 退款金额
-  转换：计算GMV
-  
-规则3：数据分类
-  示例：用户分群（VIP、普通）
-  转换：根据订单金额分类
-```
-
-#### 二、数据转换的类型
-
-##### 2.1 数据清洗（Data Cleaning）
-
-**定义**：过滤或修正无效数据
-
-**示例1：过滤空值**
 ```sql
--- 过滤user_id为空的订单
+-- 过滤空值、异常值
+WHERE user_id IS NOT NULL           -- 用户缺失的订单，删
+  AND order_amount > 0              -- 负数金额，删
+  AND order_status = 'completed'    -- 只看已完成
+  AND is_deleted = false            -- 软删除的数据，排除
+
+-- 去重（源系统可能出现重复订单号）
+SELECT DISTINCT ON (order_id) order_id, ...
+```
+
+清洗的核心判断不是"能不能过滤"，而是"过滤标准要统一且可追溯"。如果上半年的 GMV 不含退款、下半年的 GMX 含退款，跨期对比就没有意义。清洗规则必须在全公司范围内达成一致，并记录在 dim_metrics 元数据表里。
+
+**数据格式化**。统一不同源系统之间的数据格式差异：
+
+```sql
+-- 日期统一：多种格式 → YYYYMMDD 整数
+TO_CHAR(created_at, 'YYYYMMDD')::INT as date_id
+
+-- 性别统一：0/1、M/F、男/女 → M/F
+CASE gender
+    WHEN '0' THEN 'M' WHEN '1' THEN 'F'
+    WHEN '男' THEN 'M' WHEN '女' THEN 'F'
+    ELSE 'U'
+END as gender
+
+-- 布尔值统一：true/1/yes → TRUE
+CASE WHEN is_vip IN ('true', '1', 'yes') THEN TRUE ELSE FALSE END as is_vip
+```
+
+**数据关联**。JOIN 维度表，把维度属性补到事实表上：
+
+```sql
 CREATE TABLE dwd_fact_orders AS
-SELECT 
-    order_id,
-    user_id,
-    product_id,
-    order_amount
-FROM ods_orders
-WHERE user_id IS NOT NULL;  -- 清洗：过滤user_id为空的记录
-```
-
-**示例2：过滤异常值**
-```sql
--- 过滤order_amount为负数的订单
-CREATE TABLE dwd_fact_orders AS
-SELECT 
-    order_id,
-    user_id,
-    product_id,
-    order_amount
-FROM ods_orders
-WHERE order_amount > 0;  -- 清洗：过滤订单金额为负数的记录
-```
-
-**示例3：修正格式**
-```sql
--- 修正日期格式
-CREATE TABLE dwd_fact_orders AS
-SELECT 
-    order_id,
-    user_id,
-    product_id,
-    order_amount,
-    TO_DATE(created_at_text, 'YYYY-MM-DD') as created_at  -- 清洗：修正日期格式
-FROM ods_orders;
-```
-
-**示例4：去重**
-```sql
--- 去除重复订单
-CREATE TABLE dwd_fact_orders AS
-SELECT DISTINCT
-    order_id,
-    user_id,
-    product_id,
-    order_amount
-FROM ods_orders;
-```
-
-##### 2.2 数据格式化（Data Formatting）
-
-**定义**：统一数据格式
-
-**示例1：日期格式化**
-```sql
--- 统一日期格式为date_id（整数）
-CREATE TABLE dwd_fact_orders AS
-SELECT 
-    order_id,
-    user_id,
-    product_id,
-    order_amount,
-    created_at,
-    TO_CHAR(created_at, 'YYYYMMDD')::INT as date_id,  -- 格式化：2026-01-01 → 20260101
-    EXTRACT(YEAR FROM created_at) as order_year,
-    EXTRACT(MONTH FROM created_at) as order_month,
-    EXTRACT(DAY FROM created_at) as order_day
-FROM ods_orders;
-```
-
-**示例2：金额格式化**
-```sql
--- 统一金额精度（保留2位小数）
-CREATE TABLE dwd_fact_orders AS
-SELECT 
-    order_id,
-    user_id,
-    product_id,
-    ROUND(order_amount, 2) as order_amount,  -- 格式化：保留2位小数
-    ROUND(discount_amount, 2) as discount_amount
-FROM ods_orders;
-```
-
-**示例3：文本格式化**
-```sql
--- 统一文本格式（大写、小写、去空格）
-CREATE TABLE dim_users AS
-SELECT 
-    user_id,
-    TRIM(name) as name,                              -- 格式化：去空格
-    LOWER(email) as email,                           -- 格式化：转小写
-    UPPER(city) as city                              -- 格式化：转大写
-FROM ods_users;
-```
-
-**示例4：布尔值格式化**
-```sql
--- 统一布尔值格式
-CREATE TABLE dwd_fact_orders AS
-SELECT 
-    order_id,
-    user_id,
-    order_amount,
-    CASE 
-        WHEN is_vip = 'true' THEN TRUE
-        WHEN is_vip = '1' THEN TRUE
-        WHEN is_vip = 'yes' THEN TRUE
-        ELSE FALSE
-    END as is_vip  -- 格式化：统一布尔值
-FROM ods_orders;
-```
-
-##### 2.3 数据关联（Data Joining）
-
-**定义**：关联多个表，丰富数据维度
-
-**示例1：关联维度表**
-```sql
--- 关联用户维度表
-CREATE TABLE dwd_fact_orders AS
-SELECT 
-    o.order_id,
-    o.date_id,
-    o.user_id,
-    o.order_amount,
-    u.city,              -- 关联：获取用户城市
-    u.province,          -- 关联：获取用户省份
-    u.segment            -- 关联：获取用户分群
+SELECT o.order_id, o.date_id, o.user_id, o.product_id, o.order_amount,
+       u.city, u.province, u.segment,       -- 用户维度信息
+       p.category, p.brand,                   -- 商品维度信息
+       c.channel_name                         -- 渠道维度信息
 FROM ods_orders o
-JOIN dim_users u ON o.user_id = u.user_id;  -- 关联用户维度表
+LEFT JOIN dim_users u ON o.user_id = u.user_id
+LEFT JOIN dim_products p ON o.product_id = p.product_id
+LEFT JOIN dim_channels c ON o.channel_id = c.channel_id;
 ```
 
-**示例2：关联多个维度表**
+注意这里用 LEFT JOIN 而不是 INNER JOIN。如果某个订单的 user_id 在用户维度表里暂时找不到（维度表更新慢于事实表），INNER JOIN 会直接丢弃这条订单——这可能导致 GMV 数据丢失。LEFT JOIN 保留订单，用户属性字段留 NULL，后续可以补。
+
+**数据聚合**。从 DWD 的明细数据汇总到 DWS 层：
+
 ```sql
--- 关联多个维度表
-CREATE TABLE dwd_fact_orders AS
-SELECT 
-    o.order_id,
-    o.date_id,
-    o.user_id,
-    o.product_id,
-    o.order_amount,
-    u.city,              -- 用户维度
-    p.category,          -- 商品维度
-    c.channel_name       -- 渠道维度
-FROM ods_orders o
-JOIN dim_users u ON o.user_id = u.user_id
-JOIN dim_products p ON o.product_id = p.product_id
-JOIN dim_channels c ON o.channel_id = c.channel_id;
-```
-
-**示例3：关联层级维度**
-```sql
--- 关联商品分类层级
-CREATE TABLE dwd_fact_orders AS
-SELECT 
-    o.order_id,
-    o.product_id,
-    p.product_name,
-    c1.category_name as category_l1,  -- 一级分类
-    c2.category_name as category_l2,  -- 二级分类
-    c3.category_name as category_l3   -- 三级分类
-FROM ods_orders o
-JOIN dim_products p ON o.product_id = p.product_id
-JOIN dim_categories c3 ON p.category_id = c3.category_id
-JOIN dim_categories c2 ON c3.parent_id = c2.category_id
-JOIN dim_categories c1 ON c2.parent_id = c1.category_id;
-```
-
-##### 2.4 数据聚合（Data Aggregation）
-
-**定义**：对明细数据进行汇总
-
-**示例1：按日期聚合**
-```sql
--- 每日GMV汇总（DWS层）
+-- 每日 GMV
 CREATE TABLE dws_daily_gmv AS
-SELECT 
-    date_id,
-    COUNT(*) as order_count,
-    SUM(order_amount) as gmv,
-    AVG(order_amount) as avg_order_amount
+SELECT date_id,
+       COUNT(*) as order_count,
+       SUM(order_amount) as gmv,
+       AVG(order_amount) as avg_order_amount,
+       COUNT(DISTINCT user_id) as user_count
 FROM dwd_fact_orders
 GROUP BY date_id;
-```
 
-**示例2：按多维度聚合**
-```sql
--- 每日GMV汇总（按城市）
-CREATE TABLE dws_daily_gmv_by_city AS
-SELECT 
-    date_id,
-    city,
-    COUNT(*) as order_count,
-    SUM(order_amount) as gmv
-FROM dwd_fact_orders
-GROUP BY date_id, city;
-```
+-- 7 日滚动 GMV
+SELECT date_id,
+       SUM(gmv) OVER (ORDER BY date_id ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as gmv_7d
+FROM dws_daily_gmv;
 
-**示例3：滚动聚合**
-```sql
--- 7日滚动GMV
-CREATE TABLE dws_7day_gmv AS
-SELECT 
-    date_id,
-    SUM(order_amount) OVER (
-        ORDER BY date_id
-        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
-    ) as gmv_7day
-FROM dwd_daily_gmv;
-```
-
-**示例4：累计聚合**
-```sql
--- 累计GMV
-CREATE TABLE dws_cumulative_gmv AS
-SELECT 
-    date_id,
-    gmv,
-    SUM(gmv) OVER (
-        ORDER BY date_id
-        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-    ) as cumulative_gmv
+-- 累计 GMV（至今总 GMV）
+SELECT date_id,
+       SUM(gmv) OVER (ORDER BY date_id ROWS UNBOUNDED PRECEDING) as cumulative_gmv
 FROM dws_daily_gmv;
 ```
 
-##### 2.5 数据计算（Data Calculation）
+**数据计算**。派生字段和业务指标：
 
-**定义**：基于现有字段计算新字段
-
-**示例1：计算派生字段**
 ```sql
--- 计算客单价
-CREATE TABLE dws_daily_metrics AS
-SELECT 
-    date_id,
-    gmv,
-    order_count,
-    gmv / order_count as avg_order_amount  -- 计算：客单价 = GMV / 订单数
-FROM dws_daily_gmv;
+-- 客单价 = GMV / 订单数
+gmv / NULLIF(order_count, 0) as avg_order_amount
+
+-- 转化率
+conversion_user_count * 100.0 / NULLIF(visitor_count, 0) as conversion_rate
+
+-- 用户分群
+CASE
+    WHEN total_order_amount >= 10000 THEN 'VIP'
+    WHEN total_order_amount >= 1000 THEN '高价值'
+    WHEN total_order_amount >= 100 THEN '普通'
+    ELSE '低价值'
+END as user_segment
 ```
 
-**示例2：计算比率**
-```sql
--- 计算转化率
-CREATE TABLE dws_daily_conversion AS
-SELECT 
-    date_id,
-    visitor_count,
-    conversion_user_count,
-    conversion_user_count * 100.0 / visitor_count as conversion_rate  -- 计算：转化率
-FROM dws_daily_traffic;
-```
+注意 `NULLIF` 的使用——当分母为 0 时避免除零错误，返回 NULL 比直接报错更安全。
 
-**示例3：计算时间间隔**
+#### 转换的分层设计
+
+每层之间的转换有明确的职责边界：
+
+**ODS → DWD**：清洗 + 格式化 + 关联维度。输入是原始副本，输出是干净的明细数据。
+
 ```sql
--- 计算订单到发货的天数
 CREATE TABLE dwd_fact_orders AS
-SELECT 
-    order_id,
-    created_at,
-    shipped_at,
-    DATE_PART('day', shipped_at - created_at) as days_to_ship  -- 计算：发货天数
-FROM ods_orders;
-```
-
-**示例4：计算条件字段**
-```sql
--- 计算用户分群
-CREATE TABLE dim_users AS
-SELECT 
-    user_id,
-    total_order_amount,
-    CASE 
-        WHEN total_order_amount >= 10000 THEN 'VIP'
-        WHEN total_order_amount >= 1000 THEN '高价值'
-        WHEN total_order_amount >= 100 THEN '普通'
-        ELSE '低价值'
-    END as user_segment  -- 计算：用户分群
-FROM ods_users;
-```
-
-#### 三、数据转换的分层设计
-
-##### 3.1 ODS层 → DWD层
-
-**转换内容**：
-```yaml
-数据清洗：
-  - 过滤无效数据
-  - 修正数据格式
-  - 去除重复数据
-  
-数据关联：
-  - 关联维度表
-  - 获取维度属性
-  
-数据格式化：
-  - 统一日期格式
-  - 统一金额精度
-  - 统一文本格式
-```
-
-**示例**：
-```sql
--- ODS层 → DWD层
-CREATE TABLE dwd_fact_orders AS
-SELECT 
-    -- 主键
-    o.order_id,
-    
-    -- 维度外键
-    TO_CHAR(o.created_at, 'YYYYMMDD')::INT as date_id,
-    o.user_id,
-    o.product_id,
-    o.channel_id,
-    
-    -- 关联维度表
-    u.city,
-    u.province,
-    u.segment as user_segment,
-    p.category,
-    p.brand,
-    c.channel_name,
-    
-    -- 度量
-    o.order_amount,
-    o.order_quantity,
-    o.order_profit,
-    o.discount_amount,
-    
-    -- 技术字段
-    o.created_at,
-    o.updated_at
+SELECT o.order_id,
+       TO_CHAR(o.created_at, 'YYYYMMDD')::INT as date_id,
+       o.user_id, o.product_id, o.channel_id,
+       u.city, u.segment,     -- 维度属性
+       p.category, p.brand,   -- 维度属性
+       o.order_amount, o.order_quantity
 FROM ods_orders o
--- 关联维度表
 LEFT JOIN dim_users u ON o.user_id = u.user_id
 LEFT JOIN dim_products p ON o.product_id = p.product_id
-LEFT JOIN dim_channels c ON o.channel_id = c.channel_id
--- 数据清洗
-WHERE o.order_amount > 0
-  AND o.user_id IS NOT NULL
-  AND o.order_status = 'completed';
+WHERE o.order_amount > 0 AND o.user_id IS NOT NULL AND o.order_status = 'completed';
 ```
 
-##### 3.2 DWD层 → DWS层
+**DWD → DWS**：聚合 + 计算派生指标。输入是明细数据，输出是按维度预汇总的数据。
 
-**转换内容**：
-```yaml
-数据聚合：
-  - 按日期聚合
-  - 按维度聚合
-  - 滚动聚合
-  - 累计聚合
-  
-数据计算：
-  - 计算派生指标
-  - 计算比率
-  - 计算排名
-```
-
-**示例**：
 ```sql
--- DWD层 → DWS层（每日汇总）
 CREATE TABLE dws_daily_gmv AS
-SELECT 
-    -- 维度
-    date_id,
-    city,
-    category,
-    
-    -- 度量
-    COUNT(*) as order_count,
-    SUM(order_amount) as gmv,
-    SUM(order_quantity) as total_quantity,
-    AVG(order_amount) as avg_order_amount,
-    MAX(order_amount) as max_order_amount,
-    MIN(order_amount) as min_order_amount
+SELECT date_id, city, category,
+       COUNT(*) as order_count, SUM(order_amount) as gmv,
+       AVG(order_amount) as avg_order_amount
 FROM dwd_fact_orders
 GROUP BY date_id, city, category;
 ```
 
-##### 3.3 DWS层 → ADS层
+**DWS → ADS**：面向应用的聚合 + 同比环比计算。输入是汇总数据，输出是可直接展示的报表数据。
 
-**转换内容**：
-```yaml
-数据聚合：
-  - 按月聚合
-  - 按季度聚合
-  - 按年聚合
-  
-复杂计算：
-  - 同比计算
-  - 环比计算
-  - 排名计算
-```
-
-**示例**：
 ```sql
--- DWS层 → ADS层（月度报表）
 CREATE TABLE ads_monthly_report AS
-SELECT 
-    -- 维度
-    TO_CHAR(TO_DATE(date_id::TEXT, 'YYYYMMDD'), 'YYYY-MM') as month,
-    city,
-    category,
-    
-    -- 度量
-    SUM(gmv) as monthly_gmv,
-    SUM(order_count) as monthly_order_count,
-    
-    -- 环比
-    SUM(gmv) / LAG(SUM(gmv)) OVER (PARTITION BY city, category ORDER BY date_id) - 1 as gvw_mom,
-    
-    -- 同比
-    SUM(gmv) / LAG(SUM(gmv), 12) OVER (PARTITION BY city, category ORDER BY date_id) - 1 as gvw_yoy,
-    
-    -- 排名
-    RANK() OVER (PARTITION BY city ORDER BY SUM(gmv) DESC) as category_rank_in_city
+SELECT TO_CHAR(TO_DATE(date_id::TEXT, 'YYYYMMDD'), 'YYYY-MM') as month,
+       city, category,
+       SUM(gmv) as monthly_gmv,
+       SUM(gmv) / LAG(SUM(gmv)) OVER (PARTITION BY city, category ORDER BY date_id) - 1 as gmv_mom
 FROM dws_daily_gmv
-GROUP BY city, category, date_id;
+GROUP BY month, city, category;
 ```
 
-#### 四、数据转换的最佳实践
+#### 转换的三个工程原则
 
-##### 4.1 幂等性
-
-**定义**：多次执行结果相同
+**幂等性**。同样的输入跑两次，输出完全一致。实现方式：按分区处理——每天跑之前先 DELETE 当天的数据，再 INSERT，而不是直接 INSERT 叠加。
 
 ```sql
--- 不好的设计（非幂等）
-CREATE TABLE dwd_fact_orders AS
-SELECT ... FROM ods_orders;
-
--- 好的设计（幂等）
-CREATE TABLE IF NOT EXISTS dwd_fact_orders AS
-SELECT ... FROM ods_orders;
-
--- 或者使用事务
 BEGIN;
 DELETE FROM dwd_fact_orders WHERE date_id = 20260101;
-INSERT INTO dwd_fact_orders
-SELECT ... FROM ods_orders WHERE date_id = 20260101;
+INSERT INTO dwd_fact_orders SELECT ... FROM ods_orders WHERE date_id = 20260101;
 COMMIT;
 ```
 
-##### 4.2 可追溯性
-
-**定义**：记录转换过程
+**可追溯性**。每个转换步骤记录日志：哪个表、哪一天、处理了多少行、花了多长时间、成功还是失败。
 
 ```sql
--- 创建ETL日志表
-CREATE TABLE etl_logs (
-    log_id SERIAL PRIMARY KEY,
-    table_name VARCHAR(100),
-    operation VARCHAR(50),
-    start_time TIMESTAMP,
-    end_time TIMESTAMP,
-    row_count BIGINT,
-    status VARCHAR(50),
-    error_message TEXT
-);
-
--- 记录转换日志
-INSERT INTO etl_logs (table_name, operation, start_time, status)
-VALUES ('dwd_fact_orders', 'transform', NOW(), 'running');
-
--- 执行转换
-...
-
--- 更新日志
-UPDATE etl_logs 
-SET end_time = NOW(), 
-    row_count = (SELECT count(*) FROM dwd_fact_orders),
-    status = 'success'
-WHERE table_name = 'dwd_fact_orders' 
-  AND operation = 'transform' 
-  AND status = 'running';
+INSERT INTO etl_logs (table_name, operation, start_time, end_time, row_count, status)
+VALUES ('dwd_fact_orders', 'transform', NOW(), NOW(),
+        (SELECT count(*) FROM dwd_fact_orders WHERE date_id = 20260101), 'success');
 ```
 
-##### 4.3 分区处理
-
-**定义**：按分区处理，提高性能
+**分区处理**。大表按日期分区——处理单天数据只操作一个分区，不影响其他分区的查询。
 
 ```sql
--- 按天处理
-CREATE TABLE dwd_fact_orders (
-    order_id BIGINT,
-    date_id INT,
-    ...
-) PARTITION BY RANGE (date_id);
-
--- 创建分区
+CREATE TABLE dwd_fact_orders (...) PARTITION BY RANGE (date_id);
 CREATE TABLE dwd_fact_orders_202601 PARTITION OF dwd_fact_orders
     FOR VALUES FROM (20260101) TO (20260201);
-
--- 处理单天数据
-DELETE FROM dwd_fact_orders_202601 WHERE date_id = 20260101;
-INSERT INTO dwd_fact_orders_202601
-SELECT ... FROM ods_orders WHERE date_id = 20260101;
 ```
 
-#### 五、常见误区
+#### 常见误区
 
-**误区一：转换逻辑越复杂越好**
+**"转换逻辑越复杂越好"**。转换的目标是输出高质量、可复用的数据，不是展示 SQL 技巧。一个 200 行的转换 SQL 不如拆成 3 个 30 行的分步转换——每个步骤可测试、可验证、可复用。
 
-- **说明**：转换逻辑要简洁，避免过度复杂
-- **后果**：难以维护，性能差
-- **正确理解**：
-  - 保持转换逻辑简洁
-  - 避免过度嵌套
-  - 分步实现
+**"转换不需要测试"**。转换 SQL 也是代码，会出错。最少做三方面验证：行数对比（源表过滤条件后的预期行数 vs 实际输出行数）、金额合计对比（ODS 层 sum(order_amount) vs DWD 层 sum(order_amount) 是否一致）、空值检查（关键字段 user_id、date_id 不能为 NULL）。
 
-**误区二：转换不影响性能**
+**"转换一次就完成"**。业务规则会变（GMV 定义从"不含退款"变成"含退款"）、源系统会变（新增字段）、数据量会变（需要调整分区）。数仓的转换逻辑是持续维护的，不是一次性工程。
 
-- **说明**：转换可能很耗时
-- **后果**：性能差，影响数据新鲜度
-- **正确理解**：
-  - 转换可能很耗时
-  - 需要优化SQL
-  - 使用索引、分区
+#### 小结
 
-**误区三：转换不需要测试**
-
-- **说明**：转换逻辑需要测试
-- **后果**：数据错误
-- **正确理解**：
-  - 需要单元测试
-  - 需要数据质量检查
-  - 需要验证结果
-
-**误区四：转换可以随意修改**
-
-- **说明**：转换逻辑修改会影响下游
-- **后果**：下游数据不一致
-- **正确理解**：
-  - 修改需要评估
-  - 需要通知下游
-  - 需要版本控制
-
-**误区五：转换一次就完成**
-
-- **说明**：转换需要持续优化
-- **后果**：性能退化
-- **正确理解**：
-  - 定期优化SQL
-  - 监控转换性能
-  - 持续改进
-
-#### 六、实战任务
-
-**任务1：设计ODS → DWD转换**
-
-```sql
--- 需求：将ODS层的订单表转换为DWD层的事实表
-
-CREATE TABLE dwd_fact_orders AS
-SELECT 
-    -- 主键
-    order_id,
-    
-    -- 维度外键
-    TO_CHAR(created_at, 'YYYYMMDD')::INT as date_id,
-    EXTRACT(HOUR FROM created_at) as hour_id,
-    user_id,
-    product_id,
-    channel_id,
-    
-    -- 关联维度表
-    u.city,
-    u.province,
-    u.segment as user_segment,
-    p.category,
-    p.brand,
-    c.channel_name,
-    
-    -- 度量
-    order_amount,
-    order_quantity,
-    profit,
-    discount,
-    
-    -- 技术字段
-    created_at,
-    updated_at
-FROM ods_orders o
-LEFT JOIN dim_users u ON o.user_id = u.user_id
-LEFT JOIN dim_products p ON o.product_id = p.product_id
-LEFT JOIN dim_channels c ON o.channel_id = c.channel_id
--- 数据清洗
-WHERE order_amount > 0
-  AND user_id IS NOT NULL
-  AND order_status = 'completed'
-  AND is_refunded = false;
-```
-
-**任务2：设计DWD → DWS转换**
-
-```sql
--- 需求：将DWD层的事实表转换为DWS层的每日汇总
-
-CREATE TABLE dws_daily_gmv AS
-SELECT 
-    -- 维度
-    date_id,
-    city,
-    category,
-    
-    -- 度量
-    COUNT(DISTINCT order_id) as order_count,
-    SUM(order_amount) as gmv,
-    SUM(order_quantity) as total_quantity,
-    AVG(order_amount) as avg_order_amount,
-    COUNT(DISTINCT user_id) as user_count
-FROM dwd_fact_orders
-GROUP BY date_id, city, category;
-
--- 创建索引
-CREATE INDEX idx_dws_daily_gmv_date ON dws_daily_gmv(date_id);
-CREATE INDEX idx_dws_daily_gmv_city ON dws_daily_gmv(city);
-```
-
-**任务3：设计转换流程**
-
-```sql
--- 第1步：ODS → DWD
-BEGIN;
-DELETE FROM dwd_fact_orders WHERE date_id = 20260101;
-INSERT INTO dwd_fact_orders
-SELECT ... FROM ods_orders WHERE date_id = 20260101;
-COMMIT;
-
--- 第2步：DWD → DWS
-BEGIN;
-DELETE FROM dws_daily_gmv WHERE date_id = 20260101;
-INSERT INTO dws_daily_gmv
-SELECT ... FROM dwd_fact_orders WHERE date_id = 20260101;
-COMMIT;
-
--- 第3步：记录日志
-INSERT INTO etl_logs (table_name, operation, status, row_count)
-VALUES 
-('dwd_fact_orders', 'transform', 'success', (SELECT count(*) FROM dwd_fact_orders WHERE date_id = 20260101)),
-('dws_daily_gmv', 'transform', 'success', (SELECT count(*) FROM dws_daily_gmv WHERE date_id = 20260101));
-```
-
-#### 七、小结
-
-数据转换是对抽取的数据进行清洗、格式化、关联、聚合等操作，生成高质量的数据。
-
-核心要点：
-- 数据清洗：过滤无效数据、修正格式、去重
-- 数据格式化：统一日期、金额、文本格式
-- 数据关联：关联维度表，丰富数据维度
-- 数据聚合：按维度汇总，生成汇总表
-- 数据计算：计算派生字段、比率、排名
-- 分层设计：ODS → DWD → DWS → ADS
-- 最佳实践：幂等性、可追溯性、分区处理
-
-下一节将学习数据加载，了解如何将转换后的数据加载到目标系统。
+五种转换操作：清洗（过滤无效数据）、格式化（统一编码格式）、关联（JOIN 维度表）、聚合（GROUP BY 汇总）、计算（派生字段和指标）。三个工程原则：幂等性、可追溯性、分区处理。ODS → DWD（清洗关联）、DWD → DWS（聚合计算）、DWS → ADS（应用交付）是数据在数仓内的三层加工流。下一节讲转换完了之后怎么把数据加载进目标表。
 
 ### 6.4 数据加载
 
-上一节学习了数据转换，了解了数据清洗、格式化、关联、聚合等操作。
+转换做完之后，数据要写进目标表。加载这一步决定了数据怎么"落地"——全量覆写还是增量追加，能不能安全地回滚。
 
-数据转换完成后，需要将数据加载到目标系统。这是ETL/ELT的最后一步。
+#### 三种加载方式
 
-**场景**：
-```yaml
-数据仓库项目：
-  
-数据工程师："数据转换完成了，现在加载到数仓"
-  
-技术经理："加载策略是什么？全量加载还是增量加载？"
-  
-新同事："什么是全量加载？什么是增量加载？如何选择？"
-```
+**全量加载**：TRUNCATE 目标表，重新灌入全部数据。逻辑最清晰，结果最确定——跑完就是完整的最新数据。
 
-**问题**：
-- 什么是数据加载？
-- 全量加载 vs 增量加载有什么区别？
-- 如何设计加载策略？
-- 如何保证加载性能和数据质量？
-
-**答案**：**根据数据量、性能要求、业务需求，选择全量加载、增量加载或Upsert**
-
-#### 一、为什么数据加载很重要
-
-**第一，加载策略影响数据新鲜度**
-
-```yaml
-全量加载：
-  - 每次加载全部数据
-  - 耗时长
-  - 数据延迟大
-  
-增量加载：
-  - 只加载变化数据
-  - 耗时短
-  - 数据延迟小
-```
-
-**第二，加载策略影响存储成本**
-
-```yaml
-全量加载：
-  - 可能产生重复数据
-  - 存储成本高
-  
-增量加载：
-  - 只追加新数据
-  - 存储成本低
-```
-
-**第三，加载策略影响查询性能**
-
-```yaml
-全量加载：
-  - 数据量大
-  - 查询慢
-  
-增量加载：
-  - 数据量相对小
-  - 查询快
-```
-
-#### 二、数据加载的类型
-
-##### 2.1 全量加载
-
-**定义**：每次删除目标表数据，重新加载全部数据
-
-**示例**：
 ```sql
--- 全量加载
--- 第1步：删除目标表数据
 TRUNCATE TABLE dwd_fact_orders;
-
--- 第2步：重新加载全部数据
-INSERT INTO dwd_fact_orders
-SELECT 
-    order_id,
-    date_id,
-    user_id,
-    product_id,
-    order_amount
-FROM ods_orders;
-
--- 第3步：提交
-COMMIT;
+INSERT INTO dwd_fact_orders SELECT ... FROM ods_orders;
 ```
 
-**特点**：
-```yaml
-数据量：
-  - 每次加载全部数据
-  - 数据量大
-  
-时间：
-  - 耗时长
-  - 占用资源多
-  
-简单性：
-  - 实现简单
-  - 逻辑清晰
-  
-一致性：
-  - 数据一致性好
-  - 但有加载空窗期
-```
+全量加载有两个代价。一是空窗期：TRUNCATE 和 INSERT 之间目标表是空的，如果这时候有查询跑过来会拿到空结果。在 PostgreSQL 里可以用事务包裹（TRUNCATE + INSERT 在一个事务里，外部查询看不到中间的空白状态）。二是性能：每次全量重写全部数据，对 5000 万行以上的表来说即使有索引加速也不轻松。
 
-**适用场景**：
-```yaml
-场景1：小表
-  示例：维度表、配置表
-  原因：数据量小，全量加载快
-  
-场景2：数据完全重构
-  示例：DWD层每天重构
-  原因：确保数据一致性
-  
-场景3：初始化
-  示例：首次加载
-  原因：初始化必须全量加载
-```
+适用场景：维度表（通常几十万行以下）、DWD 层每天全量重构（数据清理最彻底）。
 
-##### 2.2 增量加载
+**增量加载**：只追加新增的数据，不动已有数据。
 
-**定义**：只追加新数据，不删除旧数据
-
-**示例**：
 ```sql
--- 增量加载
--- 第1步：只加载新数据
 INSERT INTO dwd_fact_orders
-SELECT 
-    order_id,
-    date_id,
-    user_id,
-    product_id,
-    order_amount
-FROM ods_orders
-WHERE date_id = 20260101;  -- 只加载新的一天
-
--- 第2步：提交
-COMMIT;
+SELECT ... FROM ods_orders
+WHERE date_id = 20260101;  -- 只加载今天的数据
 ```
 
-**特点**：
-```yaml
-数据量：
-  - 只加载新数据
-  - 数据量小
-  
-时间：
-  - 耗时短
-  - 占用资源少
-  
-简单性：
-  - 实现简单
-  - 逻辑清晰
-  
-一致性：
-  - 数据持续增长
-  - 需要定期清理
-```
+增量加载的问题是不能处理"已有数据被修改"的情况。源库里一笔订单的状态从 pending 变成 completed，增量加载不会更新数仓里已有的 pending 记录。这就引出了 Upsert。
 
-**适用场景**：
-```yaml
-场景1：大表
-  示例：事实表
-  原因：数据量大，增量加载必要
-  
-场景2：只追加数据
-  示例：日志表、事件表
-  原因：数据只追加，不修改
-  
-场景3：需要历史数据
-  示例：需要保留完整历史
-  原因：增量加载保留历史
-```
+**Upsert（INSERT ON CONFLICT UPDATE）**：存在就更新，不存在就插入。
 
-##### 2.3 Upsert（Update + Insert）
-
-**定义**：有则更新，无则插入
-
-**示例**：
 ```sql
--- Upsert（PostgreSQL）
-INSERT INTO dwd_fact_orders
-    (order_id, date_id, user_id, product_id, order_amount)
-VALUES 
-    (12345, 20260101, 1001, 2001, 100.00)
+INSERT INTO dwd_fact_orders (order_id, date_id, user_id, product_id, order_amount)
+VALUES (12345, 20260101, 1001, 2001, 100.00)
 ON CONFLICT (order_id) DO UPDATE SET
     date_id = EXCLUDED.date_id,
     user_id = EXCLUDED.user_id,
-    product_id = EXCLUDED.product_id,
     order_amount = EXCLUDED.order_amount;
 ```
 
-**特点**：
-```yaml
-数据量：
-  - 只处理变化数据
-  - 数据量小
-  
-时间：
-  - 耗时中等
-  - 需要判断是否存在
-  
-简单性：
-  - 实现复杂
-  - 需要支持冲突处理
-  
-一致性：
-  - 数据保持最新
-  - 没有重复数据
-```
+Upsert 完美匹配 CDC 场景——CDC 流里有 INSERT（新订单）也有 UPDATE（订单状态变更），Upsert 统一处理。代价是必须有唯一键（order_id 之类的主键）来做冲突判断，而且 Upsert 比单纯 INSERT 慢（每次都要检查主键是否存在）。
 
-**适用场景**：
-```yaml
-场景1：数据会更新
-  示例：用户维度表
-  原因：用户信息会变化
-  
-场景2：需要最新数据
-  示例：维度表
-  原因：确保维度数据最新
-  
-场景3：CDC数据
-  示例：CDC增量加载
-  原因：CDC包含INSERT和UPDATE
-```
+三者的适用场景：
 
-#### 三、全量加载 vs 增量加载对比
+| 加载方式 | 适用场景 | 典型表 |
+|---------|---------|--------|
+| 全量加载 | 小表、每天全量重构 | 维度表、DWD 层（中小规模） |
+| 增量加载 | 只追加不修改的数据 | 日志表、事件表、IoT 数据 |
+| Upsert | 数据会变化、CDC 流 | 维度表（SCD）、CDC 事实表 |
 
-| 维度 | 全量加载 | 增量加载 | Upsert |
-|------|---------|---------|--------|
-| **数据量** | 全部数据 | 新数据 | 变化数据 |
-| **时间** | 长 | 短 | 中 |
-| **实现** | 简单 | 简单 | 复杂 |
-| **存储** | 可能重复 | 持续增长 | 紧凑 |
-| **查询** | 可能慢 | 快 | 快 |
-| **一致性** | 好 | 好 | 好 |
-| **历史** | 丢失 | 保留 | 保留（需要特殊设计） |
-| **更新** | 支持 | 不支持 | 支持 |
-| **适用** | 小表、初始化 | 大事实表 | 维度表、CDC |
+#### 维度表的加载
 
-#### 四、加载策略设计
+维度表的特殊性在于需要处理 SCD（缓慢变化维度）。
 
-##### 4.1 维度表的加载
-
-**策略1：快速变化维度（SCD Type 1）**
-
-**定义**：直接覆盖旧数据
+**SCD Type 1（覆盖更新）**：简单粗暴——用户改了个性签名，直接 UPDATE 覆盖，不保留历史。适合不重要、不需要追溯的属性。
 
 ```sql
--- SCD Type 1：直接更新
-CREATE TABLE dim_users AS
-SELECT * FROM ods_users;  -- 初始化
-
--- 每天加载：覆盖更新
-DELETE FROM dim_users WHERE user_id IN (SELECT user_id FROM ods_users);
-INSERT INTO dim_users SELECT * FROM ods_users;
-
--- 或者使用TRUNCATE
-TRUNCATE TABLE dim_users;
-INSERT INTO dim_users SELECT * FROM ods_users;
+-- Type 1：直接覆盖
+UPDATE dim_users SET city = '上海' WHERE user_id = 1;
 ```
 
-**策略2：历史归档维度（SCD Type 2）**
-
-**定义**：保留历史版本
+**SCD Type 2（追加版本）**：保留历史。用户等级从青铜变成白银，青铜这条记录仍然存在（标记过期），白银作为新版本加入。
 
 ```sql
--- SCD Type 2：保留历史版本
-CREATE TABLE dim_users (
-    user_id BIGINT,
-    user_name VARCHAR(100),
-    city VARCHAR(100),
-    version INT,
-    effective_date DATE,
-    expiry_date DATE,
-    is_current BOOLEAN
-);
+-- Type 2：追加新版本，标记旧版本过期
+-- 1. 插入新版本
+INSERT INTO dim_users (user_id, user_name, city, version, effective_date, is_current)
+VALUES (1, '张三', '上海', 2, CURRENT_DATE, TRUE);
 
--- 初始化
-INSERT INTO dim_users
-SELECT 
-    user_id,
-    user_name,
-    city,
-    1 as version,
-    created_at as effective_date,
-    '9999-12-31' as expiry_date,
-    TRUE as is_current
-FROM ods_users;
-
--- 每天加载：检测变化，新增版本
-INSERT INTO dim_users
-SELECT 
-    new.user_id,
-    new.user_name,
-    new.city,
-    old.version + 1 as version,
-    CURRENT_DATE as effective_date,
-    '9999-12-31' as expiry_date,
-    TRUE as is_current
-FROM ods_users new
-JOIN dim_users old ON new.user_id = old.user_id AND old.is_current = TRUE
-WHERE new.city != old.city  -- 检测变化
-  OR new.user_name != old.user_name;
-
--- 更新旧版本：设置过期日期和is_current
+-- 2. 标记旧版本过期
 UPDATE dim_users
-SET expiry_date = CURRENT_DATE - INTERVAL '1 day',
-    is_current = FALSE
-WHERE user_id IN (
-    SELECT new.user_id
-    FROM ods_users new
-    JOIN dim_users old ON new.user_id = old.user_id AND old.is_current = TRUE
-    WHERE new.city != old.city
-      OR new.user_name != old.user_name
-);
+SET expiry_date = CURRENT_DATE - 1, is_current = FALSE
+WHERE user_id = 1 AND version = 1 AND is_current = TRUE;
 ```
 
-**策略3：混合策略**
+Type 2 的查询需要加 `WHERE is_current = TRUE` 才能拿到最新状态。这个条件对性能影响很小（is_current 字段有索引就行）。
 
-```yaml
-大维度表（用户表）：
-  → 使用SCD Type 2
-  → 保留历史版本
-  
-小维度表（字典表）：
-  → 使用SCD Type 1
-  → 直接覆盖
-```
+#### 事实表的加载
 
-##### 4.2 事实表的加载
-
-**策略1：全量加载（每日重构）**
+事实表通常按日期分区，每天处理一个分区的数据：
 
 ```sql
--- 每天全量重构DWD层
-TRUNCATE TABLE dwd_fact_orders;
-INSERT INTO dwd_fact_orders
-SELECT 
-    order_id,
-    date_id,
-    user_id,
-    product_id,
-    order_amount
-FROM ods_orders
-WHERE order_status = 'completed';
-```
-
-**策略2：增量加载（追加）**
-
-```sql
--- 每天增量加载DWD层
-INSERT INTO dwd_fact_orders
-SELECT 
-    order_id,
-    date_id,
-    user_id,
-    product_id,
-    order_amount
-FROM ods_orders
-WHERE date_id = 20260101  -- 只加载新的一天
-  AND order_status = 'completed';
-```
-
-**策略3：分区加载**
-
-```sql
--- 按天分区
-CREATE TABLE dwd_fact_orders (
-    order_id BIGINT,
-    date_id INT,
-    user_id BIGINT,
-    product_id BIGINT,
-    order_amount NUMERIC(10,2)
-) PARTITION BY RANGE (date_id);
-
--- 创建分区
-CREATE TABLE dwd_fact_orders_202601 PARTITION OF dwd_fact_orders
-    FOR VALUES FROM (20260101) TO (20260201);
-
--- 加载单天数据到对应分区
+-- 按分区加载：只操作当天的分区
 DELETE FROM dwd_fact_orders_202601 WHERE date_id = 20260101;
 INSERT INTO dwd_fact_orders_202601
-SELECT 
-    order_id,
-    date_id,
-    user_id,
-    product_id,
-    order_amount
-FROM ods_orders
-WHERE date_id = 20260101;
+SELECT ... FROM ods_orders WHERE date_id = 20260101;
 ```
 
-##### 4.3 汇总表的加载
+分区加载的好处：DELETE + INSERT 只锁当天的分区，不影响其他日期的查询。而且可以并行处理多个分区。
 
-**策略1：全量刷新**
+#### 加载性能优化
 
-```sql
--- 每天全量刷新汇总表
-TRUNCATE TABLE dws_daily_gmv;
-INSERT INTO dws_daily_gmv
-SELECT 
-    date_id,
-    COUNT(*) as order_count,
-    SUM(order_amount) as gmv
-FROM dwd_fact_orders
-GROUP BY date_id;
-```
+四条优化策略，按效果从大到小排列：
 
-**策略2：增量刷新**
-
-```sql
--- 每天增量刷新汇总表
-DELETE FROM dws_daily_gmv WHERE date_id = 20260101;
-INSERT INTO dws_daily_gmv
-SELECT 
-    date_id,
-    COUNT(*) as order_count,
-    SUM(order_amount) as gmv
-FROM dwd_fact_orders
-WHERE date_id = 20260101
-GROUP BY date_id;
-```
-
-**策略3：使用物化视图**
-
-```sql
--- 创建物化视图
-CREATE MATERIALIZED VIEW mv_daily_gmv AS
-SELECT 
-    date_id,
-    COUNT(*) as order_count,
-    SUM(order_amount) as gmv
-FROM dwd_fact_orders
-GROUP BY date_id;
-
--- 刷新物化视图
-REFRESH MATERIALIZED VIEW mv_daily_gmv;
-
--- 增量刷新（PostgreSQL 9.4+）
-REFRESH MATERIALIZED VIEW CONCURRENTLY mv_daily_gmv;
-```
-
-#### 五、加载性能优化
-
-##### 5.1 批量插入
-
-**方法**：使用批量插入而非单行插入
+**用 COPY 而不是 INSERT**。PostgreSQL 的 COPY 命令是批量加载最快的方式（比逐行 INSERT 快 10-100 倍）。
 
 ```python
-# 不好的做法：单行插入
-for order in orders:
-    cursor.execute("""
-        INSERT INTO dwd_fact_orders 
-        (order_id, date_id, user_id, product_id, order_amount)
-        VALUES (%s, %s, %s, %s, %s)
-    """, (order['order_id'], order['date_id'], order['user_id'], 
-          order['product_id'], order['order_amount']))
-
-# 好的做法：批量插入
-data = [
-    (order['order_id'], order['date_id'], order['user_id'], 
-     order['product_id'], order['order_amount'])
-    for order in orders
-]
-
-cursor.executemany("""
-    INSERT INTO dwd_fact_orders 
-    (order_id, date_id, user_id, product_id, order_amount)
-    VALUES (%s, %s, %s, %s, %s)
-""", data)
-```
-
-##### 5.2 禁用索引和约束
-
-**方法**：加载前禁用，加载后启用
-
-```sql
--- 加载前：禁用索引
-ALTER INDEX idx_fact_orders_date DISABLE;
-ALTER INDEX idx_fact_orders_user DISABLE;
-
--- 加载数据
-INSERT INTO dwd_fact_orders SELECT ...;
-
--- 加载后：重建索引
-REINDEX INDEX idx_fact_orders_date;
-REINDEX INDEX idx_fact_orders_user;
-
--- 或者：DROP后CREATE
-DROP INDEX IF EXISTS idx_fact_orders_date;
-DROP INDEX IF EXISTS idx_fact_orders_user;
-
-INSERT INTO dwd_fact_orders SELECT ...;
-
-CREATE INDEX idx_fact_orders_date ON dwd_fact_orders(date_id);
-CREATE INDEX idx_fact_orders_user ON dwd_fact_orders(user_id);
-```
-
-##### 5.3 使用COPY命令
-
-**方法**：使用PostgreSQL的COPY命令
-
-```python
-# 使用COPY命令（最快）
 import psycopg2
 from io import StringIO
 
-# 准备数据
 data = StringIO()
-for order in orders:
-    data.write(f"{order['order_id']}\t{order['date_id']}\t{order['user_id']}\t{order['product_id']}\t{order['order_amount']}\n")
+for row in orders:
+    data.write(f"{row['order_id']}\t{row['date_id']}\t{row['user_id']}\t{row['amount']}\n")
 data.seek(0)
 
-# 使用COPY
-conn = psycopg2.connect(...)
-cursor = conn.cursor()
-cursor.copy_from(data, 'dwd_fact_orders', columns=('order_id', 'date_id', 'user_id', 'product_id', 'order_amount'))
-conn.commit()
+cursor.copy_from(data, 'dwd_fact_orders', columns=('order_id', 'date_id', 'user_id', 'amount'))
 ```
 
-##### 5.4 并行加载
+**加载前删索引，加载后重建**。索引维护是加载过程中最慢的操作之一。对于全量加载（TRUNCATE + INSERT）：先 DROP 所有非主键索引，加载完再 CREATE。加载速度通常能提升 3-5 倍。
 
-**方法**：并行加载不同分区
+**批量提交**。不要每一行 INSERT 就 COMMIT 一次。把 10000 行放一个事务里提交，减少事务开销。
 
-```bash
-# 并行加载不同天
-#!/bin/bash
+**并行加载不同分区**。如果表按日期分区，可以用多个进程/线程同时加载不同日期的分区。分区之间独立，不会相互锁。
 
-# 加载2026-01-01
-load_day.sh 20260101 &
-PID1=$!
+#### 加载后的验证
 
-# 加载2026-01-02
-load_day.sh 20260102 &
-PID2=$!
-
-# 加载2026-01-03
-load_day.sh 20260103 &
-PID3=$!
-
-# 等待所有完成
-wait $PID1
-wait $PID2
-wait $PID3
-```
-
-#### 六、数据质量保证
-
-##### 6.1 加载前检查
+加载完成后必须验证数据完整性。最少做两个检查：
 
 ```sql
--- 检查1：数据量是否合理
-SELECT 
-    'source' as table_name,
-    count(*) as row_count
-FROM ods_orders
-WHERE date_id = 20260101
-
+-- 检查 1：行数是否合理
+SELECT 'source' as src, count(*) FROM ods_orders WHERE date_id = 20260101
 UNION ALL
+SELECT 'target' as tgt, count(*) FROM dwd_fact_orders WHERE date_id = 20260101;
 
-SELECT 
-    'target' as table_name,
-    count(*) as row_count
-FROM dwd_fact_orders
-WHERE date_id = 20260101;
-
--- 检查2：数据完整性
-SELECT 
-    count(*) FILTER (WHERE user_id IS NULL) as null_user_id,
-    count(*) FILTER (WHERE order_amount IS NULL) as null_order_amount
-FROM ods_orders
-WHERE date_id = 20260101;
-
--- 检查3：数据准确性
-SELECT 
-    count(*) FILTER (WHERE order_amount < 0) as negative_amount,
-    count(*) FILTER (WHERE order_amount = 0) as zero_amount
-FROM ods_orders
-WHERE date_id = 20260101;
+-- 检查 2：金额是否一致
+SELECT 'source' as src, SUM(order_amount) FROM ods_orders WHERE date_id = 20260101
+UNION ALL
+SELECT 'target' as tgt, SUM(order_amount) FROM dwd_fact_orders WHERE date_id = 20260101;
 ```
 
-##### 6.2 加载后验证
+如果行数或金额差异超过 1%，触发告警，人工介入排查。
 
-```sql
--- 验证1：行数是否一致
-WITH source_count AS (
-    SELECT count(*) as cnt FROM ods_orders WHERE date_id = 20260101
-),
-target_count AS (
-    SELECT count(*) as cnt FROM dwd_fact_orders WHERE date_id = 20260101
-)
-SELECT 
-    source_count.cnt as source_rows,
-    target_count.cnt as target_rows,
-    source_count.cnt - target_count.cnt as diff
-FROM source_count, target_count;
+#### 常见误区
 
--- 验证2：金额是否一致
-WITH source_sum AS (
-    SELECT SUM(order_amount) as total FROM ods_orders WHERE date_id = 20260101
-),
-target_sum AS (
-    SELECT SUM(order_amount) as total FROM dwd_fact_orders WHERE date_id = 20260101
-)
-SELECT 
-    source_sum.total as source_amount,
-    target_sum.total as target_amount,
-    source_sum.total - target_sum.total as diff
-FROM source_sum, target_sum;
-```
+**"全量加载最简单"**。实现简单不等于运维简单。当表涨到千万级，全量加载可能从 2 分钟膨胀到 30 分钟。一开始就应该按数据量的增长预期选择加载策略。
 
-#### 七、常见误区
+**"增量加载不需要处理删除"**。源库的 DELETE 操作在增量加载中感知不到。必须通过软删除（is_deleted 字段）或 CDC 来弥补。
 
-**误区一：全量加载最简单**
+**"Upsert 性能最好"**。Upsert 每次插入都要检查主键冲突，在批量大量数据时比纯 INSERT 慢。如果确定数据没有重复（比如只追加不修改的日志表），用纯 INSERT 更快。
 
-- **说明**：全量加载看似简单，但数据量大时会有问题
-- **后果**：加载时间长，影响数据新鲜度
-- **正确理解**：
-  - 小表可以全量加载
-  - 大表必须增量加载
-  - 根据场景选择
+**"加载不需要事务"**。一个加载流程里，DELETE 旧分区 + INSERT 新数据必须在同一个事务里。否则中间态（DELETE 完了但 INSERT 没完成）被查询碰到就是空数据。
 
-**误区二：增量加载不需要删除**
+#### 小结
 
-- **说明**：增量加载可能需要处理删除操作
-- **后果**：数据不准确
-- **正确理解**：
-  - 需要处理源系统的删除
-  - 使用软删除或CDC
-  - 确保数据准确
-
-**误区三：Upsert性能好**
-
-- **说明**：Upsert需要判断是否存在，性能不一定好
-- **后果**：性能差
-- **正确理解**：
-  - Upsert有性能开销
-  - 全量加载可能更快
-  - 根据场景选择
-
-**误区四：加载不需要事务**
-
-- **说明**：加载需要事务保证一致性
-- **后果**：数据不一致
-- **正确理解**：
-  - 使用事务
-  - 失败时回滚
-  - 确保一致性
-
-**误区五：加载不需要监控**
-
-- **说明**：加载需要监控和日志
-- **后果**：问题难以排查
-- **正确理解**：
-  - 记录加载日志
-  - 监控加载时间
-  - 监控数据量
-
-#### 八、实战任务
-
-**任务1：设计维度表加载**
-
-```sql
--- 需求：加载用户维度表（SCD Type 2）
-
--- 第1步：检测变化
-CREATE TABLE temp_user_changes AS
-SELECT 
-    new.user_id,
-    new.user_name,
-    new.city
-FROM ods_users new
-JOIN dim_users old ON new.user_id = old.user_id AND old.is_current = TRUE
-WHERE new.city != old.city
-  OR new.user_name != old.user_name;
-
--- 第2步：更新旧版本
-UPDATE dim_users
-SET expiry_date = CURRENT_DATE - INTERVAL '1 day',
-    is_current = FALSE
-WHERE user_id IN (SELECT user_id FROM temp_user_changes)
-  AND is_current = TRUE;
-
--- 第3步：插入新版本
-INSERT INTO dim_users
-SELECT 
-    user_id,
-    user_name,
-    city,
-    (SELECT version FROM dim_users WHERE user_id = temp_user_changes.user_id AND is_current = FALSE) + 1 as version,
-    CURRENT_DATE as effective_date,
-    '9999-12-31' as expiry_date,
-    TRUE as is_current
-FROM temp_user_changes;
-```
-
-**任务2：设计事实表加载**
-
-```sql
--- 需求：加载订单事实表（分区加载）
-
--- 第1步：删除分区数据
-DELETE FROM dwd_fact_orders_202601 WHERE date_id = 20260101;
-
--- 第2步：加载新数据
-INSERT INTO dwd_fact_orders_202601
-SELECT 
-    order_id,
-    date_id,
-    user_id,
-    product_id,
-    order_amount
-FROM ods_orders
-WHERE date_id = 20260101
-  AND order_status = 'completed';
-
--- 第3步：验证
-SELECT 
-    count(*) as loaded_rows
-FROM dwd_fact_orders_202601
-WHERE date_id = 20260101;
-```
-
-**任务3：设计汇总表加载**
-
-```sql
--- 需求：加载每日GMV汇总表（增量刷新）
-
--- 第1步：删除当天数据
-DELETE FROM dws_daily_gmv WHERE date_id = 20260101;
-
--- 第2步：插入新汇总
-INSERT INTO dws_daily_gmv
-SELECT 
-    date_id,
-    COUNT(*) as order_count,
-    SUM(order_amount) as gmv,
-    AVG(order_amount) as avg_order_amount
-FROM dwd_fact_orders
-WHERE date_id = 20260101
-GROUP BY date_id;
-
--- 第3步：验证
-SELECT 
-    date_id,
-    order_count,
-    gmv
-FROM dws_daily_gmv
-WHERE date_id = 20260101;
-```
-
-#### 九、小结
-
-数据加载是将转换后的数据写入目标系统的过程，根据数据量、性能要求选择全量加载、增量加载或Upsert。
-
-核心要点：
-- 全量加载：删除后重新加载，适合小表
-- 增量加载：只追加新数据，适合大事实表
-- Upsert：有则更新无则插入，适合维度表和CDC
-- 维度表加载：SCD Type 1（覆盖）、SCD Type 2（历史）
-- 事实表加载：全量重构、增量追加、分区加载
-- 汇总表加载：全量刷新、增量刷新、物化视图
-- 性能优化：批量插入、禁用索引、COPY命令、并行加载
-- 质量保证：加载前检查、加载后验证
-
-下一节将学习常见ETL工具，了解Airflow、dbt、Fivetran等工具的使用。
+三种加载方式：全量（小表、维度表）、增量（大日志表）、Upsert（CDC 数据、维度表 SCD）。维度表用 SCD Type 1（覆盖）或 Type 2（保留历史），事实表用分区加载。四条优化：COPY 代替 INSERT、临时删索引、批量提交、并行分区加载。加载后必须验证行数和金额一致性。
 
 ### 6.5 常见ETL工具
 
