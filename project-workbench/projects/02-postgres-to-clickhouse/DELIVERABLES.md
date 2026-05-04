@@ -2,9 +2,9 @@
 
 ## 架构产物
 
-- [ ] 画出 PostgreSQL、同步任务、ClickHouse 明细表、汇总表、BI 的链路。
-- [ ] 标出同步方式是批量、增量还是 CDC。
-- [ ] 标出失败重跑和迟到数据的位置。
+- [x] 画出 PostgreSQL、同步任务、ClickHouse 明细表、汇总表、BI 的链路：`docs/architecture.md`。
+- [x] 标出同步方式是批量、增量还是 CDC：`docs/architecture.md`。
+- [x] 标出失败重跑和迟到数据的位置：`docs/architecture.md`。
 
 ## 数据模型产物
 
@@ -17,7 +17,7 @@
 
 - [x] 初始同步脚本或伪代码：`docs/sync-strategy.md`。
 - [x] 增量同步策略说明：`docs/sync-strategy.md`。
-- [ ] 明细查询 SQL。
+- [x] 明细查询 SQL：`queries/detail-queries.md`。
 - [x] 汇总查询 SQL：`queries/daily-gmv.sql`。
 
 ## 验证证据
@@ -25,9 +25,10 @@
 - [x] 字段映射完整性检查：由 `pnpm projects:verify` 静态检查关键产物。
 - [x] 本地静态运行入口：`run.sh`。
 - [x] 运行记录模板：`reports/run-record-template.md`。
+- [x] 对账口径说明：`docs/reconciliation-notes.md`。
 - [ ] 明细行数对账。
 - [ ] 汇总指标对账。
-- [ ] 查询性能对比记录。
+- [x] 查询性能对比记录模板：`docs/performance-comparison.md`。
 
 ## 复盘记录
 

@@ -28,6 +28,7 @@ Document
 - RAG 评测集样例见 `evals/rag-eval-sample.json`。
 - Chunk 与版本策略见 `docs/chunking-and-versioning.md`。
 - 权限边界见 `docs/permission-boundary.md`。
+- 运行记录模板见 `reports/run-record-template.md`。
 
 ## 核心链路
 
@@ -36,6 +37,7 @@ Document
 - 在检索前应用权限和元数据过滤。
 - 记录每次召回和重排结果。
 - 用小型评测集检查召回质量。
+- 用 `run.sh` 做 pgvector schema、权限检索 SQL、评测集、Chunk 策略和权限边界的本地静态检查。
 
 ## 验收指标
 
@@ -44,10 +46,12 @@ Document
 - [ ] 有检索日志表。
 - [ ] 有 RAG 评测集样例。
 - [ ] 能解释 pgvector 与专门向量数据库的边界。
+- [x] 有本地静态检查入口和运行记录模板。
 
 ## 运行命令
 
 ```bash
+project-workbench/projects/05-rag-vector-kb/run.sh
 pnpm projects:verify
 ```
 

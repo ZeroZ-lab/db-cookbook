@@ -27,6 +27,7 @@ PostgreSQL / Document
 - Neo4j 路径查询见 `queries/neo4j-paths.cypher`。
 - NebulaGraph 路径查询见 `queries/nebulagraph-paths.ngql`。
 - GraphRAG 上下文模板见 `graphrag/context-template.md`。
+- 运行记录模板见 `reports/run-record-template.md`。
 
 ## 核心链路
 
@@ -34,6 +35,7 @@ PostgreSQL / Document
 - 从结构化表或文档抽取实体关系。
 - 写出一跳、两跳、多跳查询。
 - 将图路径结果拼接进 RAG 上下文。
+- 用 `run.sh` 做 ontology、三元组、路径查询、GraphRAG 模板和日志模板的本地静态检查。
 
 ## 验收指标
 
@@ -42,10 +44,12 @@ PostgreSQL / Document
 - [ ] 有路径查询样例。
 - [ ] 有图与向量结合策略。
 - [ ] 有图谱版本和查询日志。
+- [x] 有本地静态检查入口和运行记录模板。
 
 ## 运行命令
 
 ```bash
+project-workbench/projects/06-knowledge-graph-graphrag/run.sh
 pnpm projects:verify
 ```
 

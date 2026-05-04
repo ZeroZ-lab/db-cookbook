@@ -41,15 +41,18 @@ assert(fs.existsSync(glossaryFile), 'Missing generated glossary: site/glossary.m
 const glossary = fs.readFileSync(glossaryFile, 'utf8');
 
 for (const entry of terms) {
-  assert(glossary.includes(`**${entry.term}**`), `Missing glossary definition: ${entry.term}`);
-  const variants = entry.variants ?? [entry.term];
+  const checkTerms = entry.variants ?? [entry.term];
+  assert(
+    checkTerms.some((t) => glossary.includes(`**${t}**`)),
+    `Missing glossary definition: ${entry.term}`
+  );
 
   for (const chapter of entry.chapters) {
     const file = path.join(root, chapter);
     assert(fs.existsSync(file), `Missing chapter for terminology check: ${chapter}`);
     const text = fs.readFileSync(file, 'utf8');
     assert(
-      variants.some((variant) => text.includes(variant)),
+      checkTerms.some((variant) => text.includes(variant)),
       `Missing terminology usage ${entry.term} in ${chapter}`
     );
   }

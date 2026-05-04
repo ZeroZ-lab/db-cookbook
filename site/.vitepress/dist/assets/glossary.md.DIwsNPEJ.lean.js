@@ -1,1 +1,0 @@
-import{_ as t,o,c as l,ag as i}from"./chunks/framework.CAXxHpAX.js";const d=JSON.parse('{"title":"术语表","description":"","frontmatter":{},"headers":[],"relativePath":"glossary.md","filePath":"glossary.md"}'),n={name:"glossary.md"};function a(s,r,e,g,h,c){return o(),l("div",null,[...r[0]||(r[0]=[i("",19)])])}const P=t(n,[["render",a]]);export{d as __pageData,P as default};

@@ -21,11 +21,11 @@
 | 目标要求 | 产物 | 自动验证 | 当前判断 |
 | --- | --- | --- | --- |
 | 由浅入深 | `manuscript/README.md`、`docs/course-outline.md`、第 0-17 章 | `verify-book-structure`、`verify-writing-contract` | 已形成路线，仍需出版编辑 |
-| 以 PostgreSQL 建立基础直觉 | 第 0、1、2、3 章，SQL Lab，项目 1 | `verify-book-structure`、`verify-sql-examples`、`projects:verify` | 已覆盖；项目 1 提供本地 PostgreSQL 和 Docker Compose 运行路径，真实执行待补 |
+| 以 PostgreSQL 建立基础直觉 | 第 0、1、2、3 章，SQL Lab，项目 1 | `verify-book-structure`、`verify-sql-examples`、`projects:verify` | 已覆盖；项目 1 已有架构图、业务事实关系、指标口径卡片（GMV/订单数/客单价/复购率/转化率）、24 条分析 SQL、3 条 EXPLAIN 记录、索引优化对比、分区/物化视图设计、DDL 来源说明、查询分类说明、Docker Compose 运行路径；真实 PostgreSQL 执行待补 |
 | 扩展 SQL 分析能力 | 第 2 章、`site/public/examples/chapter-02-queries.sql` | `verify-sql-examples` | 已静态验证 |
-| 解释 OLTP / OLAP 分化 | 第 4 章、项目 2 | `verify-writing-contract`、`projects:verify` | 已覆盖；项目 2 已有 ClickHouse 字段映射、MergeTree DDL、GMV 查询、表设计说明、同步策略、静态运行入口和对账/运行记录模板，真实 ClickHouse 执行待补 |
-| 覆盖大数据架构 | 第 5-9、12 章，项目 3-4 | `verify-writing-contract`、`projects:verify` | 已覆盖；项目 3 已有 CDC / Kafka / Flink / Sink 关键产物；项目 4 已有对象存储布局、Iceberg DDL、Trino 查询、Spark 转换和演化记录；真实引擎执行待补 |
-| 覆盖 AI 数据基础设施 | 第 10、11、13 章，项目 5-7 | `verify-writing-contract`、`projects:verify` | 已覆盖；项目 5 已有 RAG 关键产物；项目 6 已有 GraphRAG 关键产物；项目 7 已有治理 schema、指标字典、血缘、质量规则、权限策略和审计模板；高风险事实已初核 |
+| 解释 OLTP / OLAP 分化 | 第 4 章、项目 2 | `verify-writing-contract`、`projects:verify` | 已覆盖；项目 2 已有架构图、ClickHouse 字段映射、MergeTree DDL、GMV 查询、明细查询 SQL、表设计说明、同步策略、对账口径说明、性能对比记录模板、静态运行入口和对账/运行记录模板，真实 ClickHouse 执行待补 |
+| 覆盖大数据架构 | 第 5-9、12 章，项目 3-4 | `verify-writing-contract`、`projects:verify` | 已覆盖；项目 3 已有架构图、CDC 伪运行流程、Kafka 消费样例、Topic 验证说明、CDC / Kafka / Flink / Sink 关键产物、静态运行入口和运行记录模板；项目 4 已有架构图、导出伪代码、Trino/Spark 结果模板、对象存储布局、Iceberg DDL、Trino 查询、Spark 转换、演化记录、静态运行入口和运行记录模板；真实引擎执行待补 |
+| 覆盖 AI 数据基础设施 | 第 10、11、13 章，项目 5-7 | `verify-writing-contract`、`projects:verify` | 已覆盖；项目 5 已有架构图、文档解析规则、RAG 评测结果模板、RAG 关键产物、静态运行入口和运行记录模板；项目 6 已有架构图、GraphRAG 证据拼接检查项、路径查询结果模板、GraphRAG 关键产物、静态运行入口和运行记录模板；项目 7 已有架构图、质量规则运行结果模板、权限策略测试记录模板、治理 schema、指标字典、血缘、质量规则、权限策略、静态运行入口和运行记录模板；高风险事实已初核 |
 | 每章八段结构 | 18 个正式章节 | `verify-book-structure` | 已验证 |
 | 概念不是词典定义 | 写作规范、章节正文、写作契约验证 | `verify-writing-contract` | 已做文本覆盖验证，仍需人工编辑审校 |
 | 内容由浅入深且细节充分 | 18 个正式章节、正文深度校验 | `depth:verify` | 已建立最低深度门槛，仍需出版级事实核查和精修 |
@@ -52,9 +52,12 @@
 
 - 全书 18 章已经形成从 PostgreSQL 到 AI 数据基础设施的系统路线。
 - 每章固定八段结构已自动验证。
-- 每章已具备“问题、边界、演化、平台位置、验证任务”的文本覆盖。
+- 每章已具备”问题、边界、演化、平台位置、验证任务”的文本覆盖。
 - 第 2 章 SQL 样例已做静态一致性检查。
 - 第 14 章项目实战已有七个项目目录、交付清单、机器可读状态表、执行总表、站点状态入口和验证入口。
+- 七个项目均有架构链路图、说明文档、查询样例、结果模板等静态交付物。
+- 项目 1 已有 24 条分析 SQL、指标口径卡片、索引优化对比、分区/物化视图设计。
+- 项目 2-7 均有架构图、明细查询/伪代码/评测结果/检查项等补充交付物。
 - 18 个高风险事实核查项已经完成官方来源或安全资料初核。
 - 在线阅读站点可以构建。
 

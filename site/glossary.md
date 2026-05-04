@@ -15,23 +15,31 @@
 - **Partition**：为持续增长的大表建立可管理、可裁剪的物理边界。
 - **Materialized View**：把重复查询结果提前算好并存下来，需要刷新。
 - **WAL**：Write-Ahead Log，PostgreSQL 的预写日志，是逻辑复制和 CDC 的基础。
+- **MVCC**：Multi-Version Concurrency Control，多版本并发控制。PostgreSQL 通过保留行的多个版本（tuple version chain）实现读写不互相阻塞，每个事务看到的是数据的快照。
+- **ACID**：Atomicity, Consistency, Isolation, Durability。事务的四个保证：原子性、一致性、隔离性、持久性。
+- **VACUUM**：PostgreSQL 的垃圾回收机制，清理不再被任何事务可见的旧版本行（dead tuples），回收存储空间。
 
 ## 数据建模
 
 - **Fact Table**：记录业务事实的表，一行代表一笔交易、一次事件或一个度量。
 - **Dimension Table**：描述业务对象属性的表，如用户、商品、地区。
 - **Star Schema**：以事实表为中心、维度表围绕的星型建模方式。
-- **ODS / DWD / DWS / ADS**：数仓分层，从原始数据到明细、汇总和应用层。
+- **ODS**：操作数据存储层，源数据副本，不做任何清洗。职责 = 备份 + 隔离源系统。
+- **DWD**：明细数据层，清洗、统一、关联原始数据。职责 = 把原始数据变成可用的明细数据。
+- **DWS**：汇总数据层，按维度预聚合。职责 = 把常用汇总提前算好。
+- **ADS**：应用数据层，面向具体报表和应用。职责 = 准备好最终数据，BI 工具直接查询。
 - **Metric**：可量化的业务度量，如 GMV、DAU、转化率。
 - **Granularity**：表中一行代表的业务粒度。
 
 ## 数据平台
 
-- **OLTP**：面向业务交易，高频小事务、低延迟和强一致优先。
-- **OLAP**：面向数据分析，大范围扫描、聚合和吞吐优先。
-- **ETL / ELT**：数据抽取、转换、装载的链路模式。
-- **CDC**：捕获数据库变更并形成持续数据流。
+- **OLTP**：Online Transaction Processing，面向业务交易，高频小事务、低延迟和强一致优先。
+- **OLAP**：Online Analytical Processing，面向数据分析，大范围扫描、聚合和吞吐优先。
+- **ETL**：Extract, Transform, Load。先抽取、再转换、最后装载的数据集成模式。
+- **ELT**：Extract, Load, Transform。先抽取装载到目标系统，再在目标系统内做转换。
+- **CDC**：Change Data Capture，捕获数据库变更并形成持续数据流。
 - **Data Lineage**：数据从源到目标的流转路径和依赖关系。
+- **CAP**：CAP 定理（Brewer 2000）：分布式系统中，Consistency（可线性化）、Availability（可用性）、Partition Tolerance（分区容忍）三者无法同时完美保证。不要简化为'三选二'。
 
 ## 批处理与流处理
 
@@ -47,6 +55,7 @@
 - **MergeTree**：ClickHouse 的核心表引擎，通过排序键和稀疏索引优化分析查询。
 - **Doris**：面向实时数仓和 BI 的 MPP 分析数据库。
 - **DuckDB**：本地嵌入式 OLAP 数据库，可直接查询 Parquet 文件。
+- **MPP**：Massively Parallel Processing，大规模并行处理架构，数据分布在多个节点上并行计算。
 
 ## 湖仓
 
@@ -71,8 +80,8 @@
 
 ## 图数据库
 
-- **Node / Vertex**：图中的实体节点。
-- **Edge / Relationship**：实体之间的关系。
+- **Node**：图中的实体节点，也作 Vertex。
+- **Edge**：实体之间的关系，也作 Relationship。
 - **Property Graph**：节点和边都可以带属性的图模型。
 - **Cypher**：Neo4j 的图查询语言，用模式匹配表达路径查询。
 - **GraphRAG**：结合图关系和检索增强生成的 AI 应用模式。

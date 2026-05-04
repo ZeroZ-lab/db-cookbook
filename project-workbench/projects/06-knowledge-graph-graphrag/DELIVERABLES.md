@@ -2,9 +2,9 @@
 
 ## 架构产物
 
-- [ ] 画出结构化数据或文档、实体抽取、关系抽取、图数据库、GraphRAG 的链路。
-- [ ] 标出实体、关系、路径和证据来源。
-- [ ] 标出图查询如何进入 RAG 上下文。
+- [x] 画出结构化数据或文档、实体抽取、关系抽取、图数据库、GraphRAG 的链路：`docs/architecture.md`。
+- [x] 标出实体、关系、路径和证据来源：`docs/architecture.md`。
+- [x] 标出图查询如何进入 RAG 上下文：`docs/architecture.md`。
 
 ## 数据模型产物
 
@@ -22,10 +22,13 @@
 
 ## 验证证据
 
-- [ ] 路径查询结果。
+- [x] 路径查询结果模板：`reports/path-query-result-template.md`。
 - [x] 原始证据追溯记录：`data/triples-sample.jsonl` 和 `reports/graph-query-log-template.md`。
 - [x] 图谱版本记录：`data/triples-sample.jsonl`。
 - [x] 图与向量联合检索案例：`graphrag/context-template.md`。
+- [x] 本地静态运行入口：`run.sh`。
+- [x] 运行记录模板：`reports/run-record-template.md`。
+- [x] GraphRAG 证据拼接检查项：`docs/graphrag-evidence-checklist.md`。
 
 ## 复盘记录
 

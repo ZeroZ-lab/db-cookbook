@@ -1,703 +1,102 @@
 ### 6.1 ETL vs ELT
 
-前面学习了数据仓库建模，了解了维度建模、分层架构、指标体系等。
+第 5 章讲完了数仓建模——维度怎么设计、分层怎么规划。这一章进入数据工程的实操：怎么把业务库的数据搬到数仓里。先解决最基础的选型问题：ETL 还是 ELT。
 
-现在开始学习数据工程的核心环节：数据移动和转换。
+#### 两者的区别就一个：转换发生在哪
 
-**场景**：
-```yaml
-数据仓库项目启动：
-  
-技术经理："数据仓库设计好了，现在开始把数据从业务库同步过来"
-  
-数据工程师A："我用ETL，先转换再加载"
-  
-数据工程师B："我用ELT，先加载再转换"
-  
-新同事："什么是ETL？什么是ELT？有什么区别？"
-```
+ETL（Extract-Transform-Load）的流程是：从源库抽取数据 → 在独立的 ETL 服务器上做清洗和转换 → 把转换好的数据加载到数仓。数据在进入数仓之前已经"干净"了。
 
-**问题**：
-- 什么是ETL？什么是ELT？
-- ETL和ELT有什么区别？
-- 应该选择ETL还是ELT？
-- 各自的适用场景是什么？
+ELT（Extract-Load-Transform）反过来：从源库抽取数据 → 直接把原始数据加载到数仓的 ODS 层 → 在数仓内部用 SQL 做转换。数据先"扔"进数仓，再慢慢整理。
 
-**答案**：**ETL和ELT是两种不同的数据集成策略，根据数据量、性能要求、技术栈选择合适的方法**
+这个区别决定了后面的一切：用什么工具、对源库的影响、转换能有多复杂、团队需要什么技能。
 
-#### 一、什么是ETL和ELT
+ETL 的典型实现：
 
-##### 1.1 ETL（Extract-Transform-Load）
-
-**定义**：先抽取数据，然后转换数据，最后加载数据
-
-**流程**：
-```text
-源系统 → 抽取(Extract) → 转换(Transform) → 加载(Load) → 目标系统
-         ↓               ↓               ↓
-      原始数据        清洗/格式化      转换后数据
-```
-
-**示例**：
 ```python
-# ETL流程示例（使用Python）
+# 1. Extract：从 MySQL 拉数据
+df = pd.read_sql('SELECT * FROM orders WHERE created_at >= "2026-01-01"', mysql_conn)
 
-# 第1步：Extract（抽取）
-def extract():
-    # 从MySQL抽取数据
-    conn_mysql = pymysql.connect(host='mysql-server', user='root', database='business_db')
-    df = pd.read_sql('SELECT * FROM orders WHERE created_at >= "2026-01-01"', conn_mysql)
-    conn_mysql.close()
-    return df
+# 2. Transform：在 Python 里清洗转换
+df = df[df['order_amount'] > 0]  # 过滤无效数据
+df = df.dropna(subset=['user_id'])
+df['date_id'] = pd.to_datetime(df['created_at']).dt.strftime('%Y%m%d').astype(int)
+df = df.merge(users_df, on='user_id', how='left')  # 关联用户维度
 
-# 第2步：Transform（转换）
-def transform(df):
-    # 数据清洗
-    df = df[df['order_amount'] > 0]  # 过滤负数订单
-    df = df.dropna(subset=['user_id'])  # 删除用户ID为空的记录
-    
-    # 数据转换
-    df['order_date'] = pd.to_datetime(df['created_at']).dt.date
-    df['date_id'] = df['order_date'].apply(lambda x: int(x.strftime('%Y%m%d')))
-    
-    # 数据关联
-    df_users = pd.read_sql('SELECT user_id, city FROM users', conn_mysql)
-    df = df.merge(df_users, on='user_id', how='left')
-    
-    return df
-
-# 第3步：Load（加载）
-def load(df):
-    # 加载到PostgreSQL
-    conn_pg = psycopg2.connect(host='postgres-server', user='postgres', database='data_warehouse')
-    cursor = conn_pg.cursor()
-    
-    for _, row in df.iterrows():
-        cursor.execute("""
-            INSERT INTO dwd_fact_orders 
-            (order_id, date_id, user_id, order_amount, city)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (row['order_id'], row['date_id'], row['user_id'], row['order_amount'], row['city']))
-    
-    conn_pg.commit()
-    conn_pg.close()
-
-# 执行ETL
-df_raw = extract()
-df_transformed = transform(df_raw)
-load(df_transformed)
+# 3. Load：写入数仓
+df.to_sql('dwd_fact_orders', pg_conn, if_exists='append')
 ```
 
-**特点**：
-```yaml
-转换位置：
-  - 在独立的ETL服务器上
-  - 在加载前完成转换
-  
-数据流：
-  - 源系统 → ETL服务器 → 目标系统
-  - 转换后的数据才进入目标系统
-  
-性能影响：
-  - 对源系统影响小
-  - 转换过程不影响目标系统
-```
+ELT 的典型实现：
 
-##### 1.2 ELT（Extract-Load-Transform）
-
-**定义**：先抽取数据，然后加载数据，最后在目标系统中转换数据
-
-**流程**：
-```text
-源系统 → 抽取(Extract) → 加载(Load) → 转换(Transform) → 目标系统
-         ↓               ↓               ↓
-      原始数据        原始数据        转换后数据
-                                        (在目标系统内完成)
-```
-
-**示例**：
 ```sql
--- ELT流程示例（使用SQL）
+-- 1. Extract + Load：CDC 工具直接把数据同步到 ODS 层（工具自动完成）
+-- ods_orders 表已经有原始数据了
 
--- 第1步：Extract（抽取）
--- 从MySQL抽取数据（通过CDC工具）
--- 工具：Debezium + Kafka
--- 数据自动同步到Kafka topic
-
--- 第2步：Load（加载）
--- 从Kafka加载到PostgreSQL的ODS层（原始数据）
--- 自动完成，无需人工干预
-
--- 第3步：Transform（转换）
--- 在PostgreSQL内完成转换
-
--- 转换1：ODS → DWD（清洗）
+-- 2. Transform：在数仓内用 SQL 做转换
 CREATE TABLE dwd_fact_orders AS
-SELECT 
-    order_id,
-    date_id,
-    user_id,
-    product_id,
-    order_amount
+SELECT order_id,
+       TO_CHAR(created_at, 'YYYYMMDD')::INT as date_id,
+       user_id, product_id, order_amount
 FROM ods_orders
-WHERE order_amount > 0              -- 清洗：过滤负数订单
-  AND user_id IS NOT NULL           -- 清洗：过滤空用户ID
-  AND order_status = 'completed';   -- 清洗：只保留已完成订单
+WHERE order_amount > 0
+  AND user_id IS NOT NULL
+  AND order_status = 'completed';
 
--- 转换2：DWD → DWS（关联）
+-- 3. 继续 DWS 层
 CREATE TABLE dws_daily_gmv AS
-SELECT 
-    date_id,
-    count(*) as order_count,
-    sum(order_amount) as gmv
-FROM dwd_fact_orders f
-JOIN dim_users u ON f.user_id = u.user_id  -- 关联维度表
+SELECT date_id, count(*) as order_count, sum(order_amount) as gmv
+FROM dwd_fact_orders
 GROUP BY date_id;
 ```
 
-**特点**：
-```yaml
-转换位置：
-  - 在目标系统内完成
-  - 利用目标系统的计算能力
-  
-数据流：
-  - 源系统 → 目标系统（ODS层）
-  - 在目标系统内完成转换
-  
-性能影响：
-  - 原始数据全部进入目标系统
-  - 转换过程占用目标系统资源
-```
+#### 什么时候选 ETL，什么时候选 ELT
 
-#### 二、ETL vs ELT对比
+这不是谁比谁先进的问题——是场景匹配的问题。
 
-##### 2.1 架构对比
+**选 ETL 的场景**：
 
-**ETL架构**：
-```text
-┌──────────┐    抽取     ┌────────────┐    转换     ┌────────────┐    加载     ┌──────────┐
-│ MySQL    │ ────────→ │ ETL服务器  │ ────────→ │ ETL服务器  │ ────────→ │ 数仓PG   │
-│ 业务库    │           │ (原始数据)  │           │ (转换数据)  │           │          │
-└──────────┘           └────────────┘           └────────────┘           └──────────┘
-                              ↑                                              ↑
-                         Python/Java                                   SQL
-                         Spark/Pandas
-```
+- 源库性能敏感。核心交易系统的 MySQL 实例不能承受额外的计算负载。ETL 在独立服务器上完成所有转换，源库只负责一次数据抽取。
+- 转换逻辑复杂。需要用外部 API 做数据增强（比如调用地址解析服务把经纬度转成城市名）、需要复杂的机器学习特征工程。SQL 写不了这些。
+- 合规要求严格。金融数据在进入数仓之前必须脱敏——身份证号、手机号必须先在 ETL 服务器上处理掉，原始敏感数据不进数仓。
 
-**ELT架构**：
-```text
-┌──────────┐    抽取+加载  ┌──────────┐    转换     ┌──────────┐
-│ MySQL    │ ───────────→ │ 数仓PG   │ ────────→ │ 数仓PG   │
-│ 业务库    │    (CDC)     │ (ODS层)  │    (SQL)   │ (DWD层)  │
-└──────────┘              └──────────┘           └──────────┘
-                                                        ↓
-                                                   SQL在数仓内
-                                                   完成转换
-```
+**选 ELT 的场景**：
 
-##### 2.2 详细对比
+- 数据量大（每天 TB 级）。现代云数仓（Snowflake、BigQuery）的计算能力远超独立的 ETL 服务器。把 TB 级数据在数仓内用大规模并行计算转换，比在一台 ETL 服务器上处理快得多。
+- 云原生数仓。Snowflake、BigQuery、Redshift 的设计哲学就是 ELT——原始数据先落地，转换用 SQL 在数仓内推。这些数仓的查询优化器专为这种大 SQL 转换优化过。
+- 团队 SQL 能力强。数据分析师擅长 SQL，用 dbt 写转换逻辑比用 Python 写 ETL 门槛低。转化率定义变了，数据分析师自己改 dbt 模型就行，不用找数据工程师写 Python。
 
-| 维度 | ETL | ELT |
-|------|-----|-----|
-| **转换位置** | 独立的ETL服务器 | 目标系统内 |
-| **数据流** | 源系统 → ETL → 目标系统 | 源系统 → 目标系统 |
-| **工具** | Informatica, Talend, Python, Spark | Fivetran, Airbyte, dbt |
-| **编程语言** | Python, Java, Scala | SQL |
-| **性能** | 转换不影响源系统和目标系统 | 转换占用目标系统资源 |
-| **数据量** | 适合中低数据量 | 适合大数据量 |
-| **实时性** | 通常批量，延迟高 | 可以近实时 |
-| **成本** | 需要独立的ETL服务器 | 利用目标系统，成本低 |
-| **复杂度** | 需要管理ETL服务器 | 管理简单 |
-| **灵活性** | 高（可以使用任何编程语言） | 中（受限于SQL） |
-| **数据质量** | 转换后数据质量高 | 需要在数仓内保证质量 |
-| **调试** | 容易调试 | SQL调试相对简单 |
+**判断标准**：
 
-##### 2.3 适用场景
+| 条件 | 倾向 |
+|------|------|
+| 每天数据量 < 100GB | ETL 和 ELT 都行，选团队熟悉的 |
+| 每天数据量 100GB - 1TB | ETL 如果转换复杂，ELT 如果转换简单 |
+| 每天数据量 > 1TB | ELT，利用云数仓的计算能力 |
+| 转换需要外部 API 或 ML | ETL，Python/Java 灵活性远超 SQL |
+| 使用 Snowflake/BigQuery | ELT + dbt，原生最佳实践 |
+| 源库是核心交易系统 | ETL，最小化对源库的影响 |
+| 需要实时（秒级） | ETL 和 ELT 都不对——用流处理（第 8 章） |
 
-**ETL适用场景**：
-```yaml
-场景1：数据质量要求高
-  示例：金融数据
-  原因：需要在加载前严格清洗数据
-  
-场景2：数据源系统性能敏感
-  示例：核心交易系统
-  原因：不能影响源系统性能
-  
-场景3：转换逻辑复杂
-  示例：需要复杂的业务规则
-  原因：Python/Java比SQL更灵活
-  
-场景4：多个异构数据源
-  示例：MySQL, MongoDB, API等
-  原因：需要在ETL服务器统一处理
-  
-场景5：数据量中等
-  示例：每天GB级别
-  原因：ETL服务器可以处理
-```
+#### 混合架构是常态
 
-**ELT适用场景**：
-```yaml
-场景1：大数据量
-  示例：每天TB级别
-  原因：现代数仓（Snowflake, BigQuery）计算能力强
-  
-场景2：云原生数仓
-  示例：Snowflake, BigQuery, Redshift
-  原因：这些数仓专为ELT设计
-  
-场景3：快速实施
-  示例：初创公司
-  原因：工具简单，上手快
-  
-场景4：数据源简单
-  示例：主要是关系型数据库
-  原因：CDC工具成熟
-  
-场景5：团队SQL能力强
-  示例：数据分析师为主
-  原因：SQL比Python/Java更容易
-```
+实践中很少纯 ETL 或纯 ELT。常见的混合方式：数据抽取用 CDC 工具（Airbyte、Fivetran）直接加载到 ODS 层（ELT 的 EL 部分），复杂的脱敏和增强逻辑在独立的 Python 服务中处理（ETL 的 T 部分），常规的清洗和聚合用 dbt 在数仓内完成（ELT 的 T 部分）。
 
-#### 三、核心判断：选择ETL还是ELT
+举例：用户地址数据从 MySQL CDC 到 ODS → Python 服务调用地理编码 API 把地址转为经纬度（ELT 做不了的）→ 写回 ODS → dbt 做后续的维度关联和汇总（ELT 擅长的）。
 
-> 核心判断：**根据数据量、技术栈、团队能力选择ETL或ELT，没有绝对的优劣**
+#### ELT 和现代数据栈
 
-**判断标准1：数据量**
-```yaml
-小数据量（< 10GB/天）：
-  → ETL和ELT都可以
-  → 选择团队熟悉的方式
-  
-中等数据量（10GB-1TB/天）：
-  → ETL：如果转换逻辑复杂
-  → ELT：如果转换逻辑简单
-  
-大数据量（> 1TB/天）：
-  → ELT：现代云数仓（Snowflake, BigQuery）
-  → ETL：如果使用Hadoop/Spark
-```
+2026 年，ELT 已经成为新项目的主流选择。背后的驱动力是云数仓的普及和 dbt 的兴起。现代数据栈的典型组合是：Fivetran/Airbyte（抽取+加载） + Snowflake/BigQuery（存储+计算） + dbt（转换）。这个组合让一个 3 人的数据团队就能支撑起每天 TB 级的数据处理。
 
-**判断标准2：技术栈**
-```yaml
-传统数仓（Oracle, SQL Server）：
-  → ETL：使用Informatica, Talend
-  
-云数仓（Snowflake, BigQuery）：
-  → ELT：使用Fivetran + dbt
-  
-开源数仓（PostgreSQL, MySQL）：
-  → ETL：使用Python + Airflow
-  → ELT：使用Airbyte + dbt
-```
+但 ETL 没有消失。在你需要复杂转换、外部依赖、敏感数据脱敏的场景，独立的 ETL 服务仍然是更好的选择。两者不是替代关系，是分工。
 
-**判断标准3：团队能力**
-```yaml
-强工程能力（Python/Java/Scala）：
-  → ETL：更灵活
-  
-强SQL能力：
-  → ELT：更简单
-  
-混合团队：
-  → ELT：降低门槛
-```
+#### 常见误区
 
-**判断标准4：实时性要求**
-```yaml
-准实时（分钟级）：
-  → ELT：使用CDC
-  
-批量（小时级、天级）：
-  → ETL和ELT都可以
-  
-实时（秒级）：
-  → 流处理（Kafka + Flink）
-  → 超出ETL/ELT范畴
-```
+**"ELT 比 ETL 更先进"**。不存在先进与否。ELT 适合云数仓 + SQL 转换的场景，ETL 适合复杂转换 + 敏感源库的场景。选择取决于约束条件，不取决于趋势。
 
-#### 四、实施示例
+**"ELT 不需要转换"**。ELT 的 T 在 Load 之后，转换仍然需要——只是换到了数仓内部用 SQL 完成。转换的工作量和 ETL 一样，位置不同。
 
-##### 4.1 ETL实施（Python + PostgreSQL）
+**"必须二选一"**。混合架构是常态。CDC 负责抽取加载（EL），Python 负责复杂转换（ETL 的 T），dbt 负责常规转换（ELT 的 T）。
 
-**架构**：
-```text
-MySQL → Python脚本 → PostgreSQL
-        (ETL)
-```
+#### 小结
 
-**代码**：
-```python
-import pandas as pd
-import pymysql
-import psycopg2
-from datetime import datetime
-
-# ETL配置
-MYSQL_CONFIG = {
-    'host': 'mysql-server',
-    'user': 'root',
-    'password': 'password',
-    'database': 'business_db'
-}
-
-PG_CONFIG = {
-    'host': 'postgres-server',
-    'user': 'postgres',
-    'password': 'password',
-    'database': 'data_warehouse'
-}
-
-# Extract
-def extract_orders(start_date, end_date):
-    conn = pymysql.connect(**MYSQL_CONFIG)
-    
-    query = f"""
-        SELECT 
-            order_id,
-            user_id,
-            product_id,
-            order_amount,
-            order_status,
-            created_at
-        FROM orders
-        WHERE DATE(created_at) BETWEEN '{start_date}' AND '{end_date}'
-    """
-    
-    df = pd.read_sql(query, conn)
-    conn.close()
-    
-    print(f"Extracted {len(df)} orders from MySQL")
-    return df
-
-# Transform
-def transform_orders(df):
-    # 清洗：过滤无效数据
-    df = df[df['order_amount'] > 0]
-    df = df[df['user_id'].notna()]
-    df = df[df['order_status'] == 'completed']
-    
-    # 转换：生成date_id
-    df['order_date'] = pd.to_datetime(df['created_at']).dt.date
-    df['date_id'] = df['order_date'].apply(
-        lambda x: int(x.strftime('%Y%m%d'))
-    )
-    
-    # 关联：获取用户城市
-    conn = pymysql.connect(**MYSQL_CONFIG)
-    df_users = pd.read_sql('SELECT user_id, city FROM users', conn)
-    conn.close()
-    
-    df = df.merge(df_users, on='user_id', how='left')
-    
-    print(f"Transformed to {len(df)} valid orders")
-    return df
-
-# Load
-def load_orders(df):
-    conn = psycopg2.connect(**PG_CONFIG)
-    cursor = conn.cursor()
-    
-    # 清空目标表（可选）
-    # cursor.execute("TRUNCATE TABLE dwd_fact_orders")
-    
-    # 插入数据
-    for _, row in df.iterrows():
-        cursor.execute("""
-            INSERT INTO dwd_fact_orders 
-            (order_id, date_id, user_id, product_id, order_amount, city, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (order_id) DO NOTHING
-        """, (
-            row['order_id'],
-            row['date_id'],
-            row['user_id'],
-            row['product_id'],
-            row['order_amount'],
-            row['city'],
-            row['created_at']
-        ))
-    
-    conn.commit()
-    cursor.close()
-    conn.close()
-    
-    print(f"Loaded {len(df)} orders to PostgreSQL")
-
-# 完整ETL流程
-def etl_orders(start_date, end_date):
-    print(f"Starting ETL for {start_date} to {end_date}")
-    
-    # Extract
-    df = extract_orders(start_date, end_date)
-    
-    # Transform
-    df = transform_orders(df)
-    
-    # Load
-    load_orders(df)
-    
-    print("ETL completed successfully")
-
-# 执行
-if __name__ == '__main__':
-    # 处理昨天的数据
-    yesterday = (datetime.now() - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
-    etl_orders(yesterday, yesterday)
-```
-
-##### 4.2 ELT实施（Airbyte + dbt + PostgreSQL）
-
-**架构**：
-```text
-MySQL → Airbyte(CDC) → PostgreSQL(ODS) → dbt(Transform) → PostgreSQL(DWD)
-```
-
-**第1步：配置Airbyte（抽取+加载）**
-```yaml
-# Airbyte配置文件
-source:
-  type: postgres
-  host: mysql-server
-  port: 3306
-  database: business_db
-  username: root
-  password: password
-
-destination:
-  type: postgres
-  host: postgres-server
-  port: 5432
-  database: data_warehouse
-  username: postgres
-  password: password
-
-streams:
-  - name: orders
-    namespace: public
-    destination_namespace: ods
-    sync_mode: full_refresh_overwrite  # 或 cdc_incremental
-```
-
-**第2步：配置dbt（转换）**
-
-```sql
--- models/dwd_fact_orders.sql
-
--- DWD层：清洗后的订单事实表
-{{ config(
-    materialized='table',
-    schema='dwd'
-) }}
-
-SELECT 
-    order_id,
-    CAST(TO_DATE(created_at) AS INTEGER) as date_id,
-    user_id,
-    product_id,
-    order_amount,
-    order_status
-FROM {{ source('ods', 'orders') }}
-WHERE order_amount > 0              -- 清洗：过滤负数订单
-  AND user_id IS NOT NULL           -- 清洗：过滤空用户ID
-  AND order_status = 'completed';   -- 清洗：只保留已完成订单
-```
-
-```sql
--- models/dws_daily_gmv.sql
-
--- DWS层：每日GMV汇总
-{{ config(
-    materialized='table',
-    schema='dws'
-) }}
-
-SELECT 
-    date_id,
-    COUNT(*) as order_count,
-    SUM(order_amount) as gmv
-FROM {{ ref('dwd_fact_orders') }}
-GROUP BY date_id;
-```
-
-**第3步：执行ELT**
-```bash
-# Airbyte自动同步（CDC）
-# 无需手动执行
-
-# dbt执行转换
-dbt run
-
-# 生成文档
-dbt docs generate
-dbt docs serve
-```
-
-#### 五、常见误区
-
-**误区一：ELT比ETL更先进**
-
-- **说明**：ELT和ETL各有优劣，没有绝对优劣
-- **后果**：盲目选择ELT，可能不适合场景
-- **正确理解**：
-  - ETL适合复杂转换、敏感源系统
-  - ELT适合大数据量、云原生数仓
-  - 根据场景选择
-
-**误区二：ELT不需要转换**
-
-- **说明**：ELT也需要转换，只是转换位置不同
-- **后果**：误解ELT的含义
-- **正确理解**：
-  - ELT的T在Load之后
-  - 转换在目标系统内完成
-  - 不是没有转换
-
-**误区三：ETL是传统方法**
-
-- **说明**：ETL仍然是主流方法之一
-- **后果**：忽视ETL的价值
-- **正确理解**：
-  - ETL适合很多场景
-  - 云时代也有应用
-  - 不是过时技术
-
-**误区四：必须二选一**
-
-- **说明**：可以混合使用ETL和ELT
-- **后果**：限制设计选择
-- **正确理解**：
-  - 可以ETL处理某些数据源
-  - 可以ELT处理其他数据源
-  - 混合架构
-
-**误区五：ELT更简单**
-
-- **说明**：ELT看似简单，但需要管理数仓内的转换
-- **后果**：低估复杂度
-- **正确理解**：
-  - ELT工具简单
-  - 但转换逻辑需要管理
-  - 数据质量需要保证
-
-#### 六、实战任务
-
-**任务1：判断使用ETL还是ELT**
-
-场景1：金融公司，数据量10GB/天，核心交易系统
-```yaml
-决策：
-  → 使用ETL
-  
-原因：
-  - 数据质量要求高
-  - 源系统性能敏感
-  - 转换逻辑复杂（金融规则）
-```
-
-场景2：初创公司，数据量1TB/天，使用Snowflake
-```yaml
-决策：
-  → 使用ELT
-  
-原因：
-  - 数据量大
-  - 云原生数仓
-  - 团队小，需要快速实施
-```
-
-**任务2：设计ETL流程**
-
-设计一个ETL流程：
-```python
-# 需求：从MySQL同步用户数据到PostgreSQL
-
-# 1. Extract
-def extract_users():
-    conn = pymysql.connect(**MYSQL_CONFIG)
-    df = pd.read_sql('SELECT * FROM users WHERE updated_at >= LAST_SYNC', conn)
-    conn.close()
-    return df
-
-# 2. Transform
-def transform_users(df):
-    # 数据清洗
-    df = df[df['email'].notna()]
-    df = df[df['email'].str.contains('@')]
-    
-    # 数据转换
-    df['register_date'] = pd.to_datetime(df['created_at']).dt.date
-    df['date_id'] = df['register_date'].apply(lambda x: int(x.strftime('%Y%m%d')))
-    
-    return df
-
-# 3. Load
-def load_users(df):
-    conn = psycopg2.connect(**PG_CONFIG)
-    cursor = conn.cursor()
-    
-    for _, row in df.iterrows():
-        cursor.execute("""
-            INSERT INTO dim_users 
-            (user_id, name, email, city, date_id)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (user_id) DO UPDATE SET
-                name = EXCLUDED.name,
-                email = EXCLUDED.email,
-                city = EXCLUDED.city
-        """, (row['user_id'], row['name'], row['email'], row['city'], row['date_id']))
-    
-    conn.commit()
-    conn.close()
-
-# 执行
-df = extract_users()
-df = transform_users(df)
-load_users(df)
-```
-
-**任务3：对比ETL和ELT的优缺点**
-
-对比：
-```yaml
-ETL优点：
-  - 转换不影响源系统和目标系统
-  - 可以使用任意编程语言
-  - 转换逻辑灵活
-  - 容易调试
-  
-ETL缺点：
-  - 需要独立的ETL服务器
-  - 需要管理ETL代码
-  - 学习曲线陡峭
-  - 维护成本高
-
-ELT优点：
-  - 架构简单
-  - 利用目标系统计算能力
-  - 工具简单，上手快
-  - 维护成本低
-  
-ELT缺点：
-  - 原始数据全部进入目标系统
-  - 转换占用目标系统资源
-  - SQL灵活性有限
-  - 数据质量需要在目标系统保证
-```
-
-#### 七、小结
-
-ETL和ELT是两种不同的数据集成策略，ETL先转换后加载，ELT先加载后转换。
-
-核心要点：
-- ETL：Extract-Transform-Load，转换在独立的ETL服务器
-- ELT：Extract-Load-Transform，转换在目标系统内
-- 对比：转换位置、工具、性能、成本各有特点
-- 选择：根据数据量、技术栈、团队能力选择
-- ETL场景：数据质量要求高、转换逻辑复杂、源系统敏感
-- ELT场景：大数据量、云原生数仓、快速实施
-- 混合架构：可以混合使用ETL和ELT
-
-下一节将学习数据抽取，了解如何从源系统抽取数据。
+ETL 先转换后加载（独立服务器做转换），ELT 先加载后转换（数仓内做转换）。选型的核心变量：数据量、转换复杂度、源库性能敏感度、团队技能。混合架构是工程实践的自然选择。下一节展开数据抽取的具体方法——全量、增量、CDC 怎么实现。

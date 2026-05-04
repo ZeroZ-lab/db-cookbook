@@ -26,6 +26,7 @@ PostgreSQL
 - Trino 查询样例见 `trino/orders-analysis.sql`。
 - Spark 转换样例见 `spark/build-order-items-wide.sql`。
 - schema 和分区演化记录见 `docs/evolution-record.md`。
+- 运行记录模板见 `reports/run-record-template.md`。
 
 ## 核心链路
 
@@ -34,6 +35,7 @@ PostgreSQL
 - 用 Trino 查询明细。
 - 用 Spark 生成派生表。
 - 记录 schema 演化和分区演化策略。
+- 用 `run.sh` 做对象布局、Iceberg DDL、Trino 查询、Spark 转换和演化记录的本地静态检查。
 
 ## 验收指标
 
@@ -42,10 +44,12 @@ PostgreSQL
 - [ ] 有 Iceberg 表定义。
 - [ ] 有 Trino 查询样例。
 - [ ] 有 Spark 批处理转换说明。
+- [x] 有本地静态检查入口和运行记录模板。
 
 ## 运行命令
 
 ```bash
+project-workbench/projects/04-mini-lakehouse/run.sh
 pnpm projects:verify
 ```
 

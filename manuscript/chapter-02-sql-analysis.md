@@ -32,7 +32,7 @@
 
 > SQL 是大数据系统的共同语言。PostgreSQL、Hive、Spark SQL、Trino、ClickHouse、Doris 都依赖 SQL。学习大数据，应先强化分析 SQL，而不是先背工具名。
 
-本章要建立的判断是：SQL 不是为了“从数据库里拿到结果”，而是为了把业务问题转成稳定的数据计算过程。它的价值不只在 PostgreSQL 中成立，也会迁移到数仓、Spark SQL、Trino、ClickHouse、Doris 和 DuckDB。
+SQL 是数据工程师职业生涯中复用率最高的技能。这一章的目标是把 SQL 从”能查出数据”升级到”能把业务问题翻译成稳定、可复用、可验证的计算过程”。这里建立的判断，会原封不动地迁移到 Spark SQL、Trino、ClickHouse 和 DuckDB。
 
 SQL 也不是万能工具。它不能替你定义业务口径，不能自动判断数据质量，不能解决所有性能瓶颈，也不能替代数据建模、数据治理和系统架构。它负责把已经明确的问题、数据边界和计算规则表达出来。
 

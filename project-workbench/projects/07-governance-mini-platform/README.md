@@ -30,6 +30,7 @@ Data Assets
 - 质量规则样例见 `quality/rules.sql`。
 - 权限策略见 `policies/access-policies.md`。
 - 审计模板见 `reports/governance-audit-template.md`。
+- 运行记录模板见 `reports/run-record-template.md`。
 
 ## 核心链路
 
@@ -38,6 +39,7 @@ Data Assets
 - 表达任务依赖和血缘。
 - 运行基础质量规则。
 - 将权限策略扩展到 SQL、向量检索和图查询。
+- 用 `run.sh` 做治理 schema、指标字典、血缘、质量规则、权限策略和审计模板的本地静态检查。
 
 ## 验收指标
 
@@ -46,10 +48,12 @@ Data Assets
 - [ ] 有血缘边样例。
 - [ ] 有质量规则样例。
 - [ ] 有跨 SQL、向量、图的权限边界说明。
+- [x] 有本地静态检查入口和运行记录模板。
 
 ## 运行命令
 
 ```bash
+project-workbench/projects/07-governance-mini-platform/run.sh
 pnpm projects:verify
 ```
 

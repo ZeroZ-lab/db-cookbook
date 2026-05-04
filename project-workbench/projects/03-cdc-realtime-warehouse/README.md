@@ -26,6 +26,7 @@ PostgreSQL WAL
 - Flink SQL 见 `flink/realtime-gmv.sql`。
 - ClickHouse Sink DDL 见 `sinks/clickhouse-realtime.sql`。
 - Exactly Once 边界见 `docs/exactly-once-boundary.md`。
+- 运行记录模板见 `reports/run-record-template.md`。
 
 ## 核心链路
 
@@ -33,6 +34,7 @@ PostgreSQL WAL
 - 设计 Kafka Topic 和 Consumer Group。
 - 设计 Flink Event Time、Watermark 和窗口。
 - 设计 Sink 幂等写入或事务写入边界。
+- 用 `run.sh` 做事件、Topic、Flink SQL、Sink 和边界文档的本地静态检查。
 
 ## 验收指标
 
@@ -41,10 +43,12 @@ PostgreSQL WAL
 - [ ] 有 Flink 窗口计算说明。
 - [ ] 有迟到数据处理策略。
 - [ ] 能说明端到端 Exactly Once 依赖哪些组件共同成立。
+- [x] 有本地静态检查入口和运行记录模板。
 
 ## 运行命令
 
 ```bash
+project-workbench/projects/03-cdc-realtime-warehouse/run.sh
 pnpm projects:verify
 ```
 

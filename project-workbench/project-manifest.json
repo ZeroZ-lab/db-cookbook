@@ -31,7 +31,16 @@
         "DELIVERABLES.md",
         "run.sh",
         "docker-compose.yml",
-        "reports/run-record-template.md"
+        "reports/run-record-template.md",
+        "docs/architecture.md",
+        "docs/business-fact-relationship.md",
+        "docs/metric-definitions.md",
+        "docs/query-categories.md",
+        "docs/ddl-source.md",
+        "docs/index-optimization.md",
+        "docs/partition-materialized-views.md",
+        "queries/analysis-queries.sql",
+        "queries/explain-records.sql"
       ]
     },
     {
@@ -52,8 +61,12 @@
         "mappings/orders-wide-mapping.md",
         "clickhouse/schema.sql",
         "queries/daily-gmv.sql",
+        "queries/detail-queries.md",
         "docs/table-design-notes.md",
         "docs/sync-strategy.md",
+        "docs/architecture.md",
+        "docs/reconciliation-notes.md",
+        "docs/performance-comparison.md",
         "reports/reconciliation-template.md",
         "reports/run-record-template.md"
       ]
@@ -73,11 +86,17 @@
       "requiredArtifacts": [
         "README.md",
         "DELIVERABLES.md",
+        "run.sh",
         "events/order-status-changed.json",
         "kafka/topics.md",
         "flink/realtime-gmv.sql",
         "sinks/clickhouse-realtime.sql",
-        "docs/exactly-once-boundary.md"
+        "docs/exactly-once-boundary.md",
+        "docs/architecture.md",
+        "docs/cdc-pseudo-flow.md",
+        "docs/kafka-consumer-example.md",
+        "docs/topic-verification.md",
+        "reports/run-record-template.md"
       ]
     },
     {
@@ -95,11 +114,17 @@
       "requiredArtifacts": [
         "README.md",
         "DELIVERABLES.md",
+        "run.sh",
         "storage/object-layout.md",
         "iceberg/orders.sql",
         "trino/orders-analysis.sql",
         "spark/build-order-items-wide.sql",
-        "docs/evolution-record.md"
+        "docs/evolution-record.md",
+        "docs/architecture.md",
+        "docs/export-pseudo-code.md",
+        "reports/run-record-template.md",
+        "reports/trino-result-template.md",
+        "reports/spark-result-template.md"
       ]
     },
     {
@@ -116,12 +141,17 @@
       "requiredArtifacts": [
         "README.md",
         "DELIVERABLES.md",
+        "run.sh",
         "schema/pgvector.sql",
         "queries/retrieve-with-permission.sql",
         "evals/rag-eval-sample.json",
         "docs/chunking-and-versioning.md",
         "docs/permission-boundary.md",
-        "reports/retrieval-log-template.md"
+        "docs/architecture.md",
+        "docs/document-parsing-rules.md",
+        "reports/retrieval-log-template.md",
+        "reports/run-record-template.md",
+        "reports/rag-eval-result-template.md"
       ]
     },
     {
@@ -138,12 +168,17 @@
       "requiredArtifacts": [
         "README.md",
         "DELIVERABLES.md",
+        "run.sh",
         "ontology/entity-relation-types.md",
         "data/triples-sample.jsonl",
         "queries/neo4j-paths.cypher",
         "queries/nebulagraph-paths.ngql",
         "graphrag/context-template.md",
-        "reports/graph-query-log-template.md"
+        "docs/architecture.md",
+        "docs/graphrag-evidence-checklist.md",
+        "reports/graph-query-log-template.md",
+        "reports/run-record-template.md",
+        "reports/path-query-result-template.md"
       ]
     },
     {
@@ -160,12 +195,17 @@
       "requiredArtifacts": [
         "README.md",
         "DELIVERABLES.md",
+        "run.sh",
         "schema/governance.sql",
         "catalog/metric-dictionary.md",
         "lineage/lineage-sample.json",
         "quality/rules.sql",
         "policies/access-policies.md",
-        "reports/governance-audit-template.md"
+        "docs/architecture.md",
+        "reports/governance-audit-template.md",
+        "reports/run-record-template.md",
+        "reports/quality-rule-result-template.md",
+        "reports/policy-test-record-template.md"
       ]
     }
   ]

@@ -44,7 +44,7 @@
 | 正文深度 | 正式章节要达到最低正文字符量，并包含足够的三级结构和表格化检查/对比内容 | `node scripts/verify-manuscript-depth.mjs` 成功 | 已验证基础深度门槛，仍需出版级精修 |
 | 术语一致性 | 核心术语应在术语表中定义，并在对应章节中出现 | `node scripts/verify-terminology.mjs` 成功 | 已验证为核心术语覆盖，仍需全文编辑审校 |
 | 编辑质量残留 | 正式章节不应保留自动扩写标记、泛化占位句或明显损坏的 Markdown 表格 | `node scripts/verify-editorial-quality.mjs` 成功 | 已验证基础残留清理，仍需人工出版编辑 |
-| 可运行或可检查任务 | 第 2 章已有样例 schema 与查询；项目实战有可检查骨架、交付物清单、机器可读状态表、生成式执行总表和站点状态入口；项目 1 有独立运行入口和 PostgreSQL 17 Docker Compose；项目 2 有 ClickHouse DDL、字段映射、GMV 查询、表设计说明、同步策略、静态运行入口和对账/运行记录模板；项目 3 有 CDC 事件、Kafka Topic、Flink SQL、Sink DDL 和 Exactly Once 边界；项目 4 有对象存储布局、Iceberg DDL、Trino 查询、Spark 转换和演化记录；项目 5 有 pgvector schema、权限过滤检索、评测集、Chunk 策略和检索日志模板；项目 6 有 ontology、三元组、Neo4j/NebulaGraph 查询、GraphRAG 上下文和图查询日志；项目 7 有治理 schema、指标字典、血缘、质量规则、权限策略和审计模板；真实执行需要本机具备相应数据库环境 | `verify-sql-examples` 成功；`project-workbench/` 已建立；`project-workbench/project-manifest.json` 已建立；`docs/project-runbook.md` 已生成；`site/projects.md` 已展示 manifest 状态；7 个项目都有 `DELIVERABLES.md`；项目 1 有 `run.sh`、`docker-compose.yml` 和运行记录模板；项目 2 有 `run.sh`、`docs/table-design-notes.md`、`docs/sync-strategy.md` 和 `reports/run-record-template.md`；项目 2-7 关键产物由 `verify-project-workbench` 检查；当前环境未发现 `psql` / `createdb` / `docker` | 部分完成 |
+| 可运行或可检查任务 | 第 2 章已有样例 schema 与查询；项目实战有可检查骨架、交付物清单、机器可读状态表、生成式执行总表和站点状态入口；项目 1 有独立运行入口、PostgreSQL 17 Docker Compose、架构图、业务事实关系、指标口径卡片（GMV/订单数/客单价/复购率/转化率）、24 条分析 SQL、3 条 EXPLAIN 记录、索引优化对比、分区/物化视图设计、DDL 来源说明、查询分类说明；项目 2 有架构图、ClickHouse DDL、字段映射、GMV 查询、明细查询 SQL、表设计说明、同步策略、对账口径说明、性能对比记录模板、静态运行入口和对账/运行记录模板；项目 3 有架构图、CDC 伪运行流程、Kafka 消费样例、Topic 验证说明、CDC 事件、Kafka Topic、Flink SQL、Sink DDL、Exactly Once 边界、静态运行入口和运行记录模板；项目 4 有架构图、导出伪代码、Trino/Spark 结果模板、对象存储布局、Iceberg DDL、Trino 查询、Spark 转换、演化记录、静态运行入口和运行记录模板；项目 5 有架构图、文档解析规则、RAG 评测结果模板、pgvector schema、权限过滤检索、评测集、Chunk 策略、检索日志模板、静态运行入口和运行记录模板；项目 6 有架构图、GraphRAG 证据拼接检查项、路径查询结果模板、ontology、三元组、Neo4j/NebulaGraph 查询、GraphRAG 上下文、图查询日志、静态运行入口和运行记录模板；项目 7 有架构图、质量规则运行结果模板、权限策略测试记录模板、治理 schema、指标字典、血缘、质量规则、权限策略、审计模板、静态运行入口和运行记录模板；真实执行需要本机具备相应数据库环境 | `verify-sql-examples` 成功；`project-workbench/` 已建立；`project-workbench/project-manifest.json` 已建立；`docs/project-runbook.md` 已生成；`site/projects.md` 已展示 manifest 状态；7 个项目都有 `DELIVERABLES.md` 和 `docs/architecture.md`；项目 1 有 `run.sh`、`docker-compose.yml`、`queries/analysis-queries.sql`（24 条）、`queries/explain-records.sql`、`docs/metric-definitions.md`、`docs/index-optimization.md`、`docs/partition-materialized-views.md` 等完整交付物；项目 2 有 `queries/detail-queries.md`、`docs/reconciliation-notes.md`、`docs/performance-comparison.md`；项目 3 有 `docs/cdc-pseudo-flow.md`、`docs/kafka-consumer-example.md`、`docs/topic-verification.md`；项目 4 有 `docs/export-pseudo-code.md`、`reports/trino-result-template.md`、`reports/spark-result-template.md`；项目 5 有 `docs/document-parsing-rules.md`、`reports/rag-eval-result-template.md`；项目 6 有 `reports/path-query-result-template.md`、`docs/graphrag-evidence-checklist.md`；项目 7 有 `reports/quality-rule-result-template.md`、`reports/policy-test-record-template.md`；当前环境未发现 `psql` / `createdb` / `docker` | 部分完成 |
 | 在线阅读站点 | 站点源文件可生成 18 个章节页，并通过 VitePress 构建 | `node scripts/generate-site.mjs` 成功；`pnpm docs:build` 成功；`site/.vitepress/dist/` 已生成 | 已验证 |
 | 事实准确性 | 高风险事实要有官方来源或降级表述 | `docs/fact-check-matrix.md` 已建立核查矩阵；`docs/fact-check-register.json` 已建立 18 项结构化来源和章节映射；`docs/fact-check-records/` 已生成 18 个逐条处理记录文件；`docs/fact-check-evidence.md` 已建立 18 项证据入口；FC-001 至 FC-018 均已完成官方来源或安全资料初核；`verify-fact-check-matrix` 防止无证据完成声明 | 已初核，仍需出版级复核 |
 
@@ -67,6 +67,11 @@ pnpm docs:build
 bash -n scripts/run-postgres-examples.sh
 PATH=/Users/zhengjianqiao/.nvm/versions/node/v20.14.0/bin:$PATH bash project-workbench/projects/01-postgresql-analytics/run.sh
 project-workbench/projects/02-postgres-to-clickhouse/run.sh
+project-workbench/projects/03-cdc-realtime-warehouse/run.sh
+project-workbench/projects/04-mini-lakehouse/run.sh
+project-workbench/projects/05-rag-vector-kb/run.sh
+project-workbench/projects/06-knowledge-graph-graphrag/run.sh
+project-workbench/projects/07-governance-mini-platform/run.sh
 ```
 
 结果：
@@ -79,7 +84,7 @@ project-workbench/projects/02-postgres-to-clickhouse/run.sh
 - `verify-editorial-quality` 成功，正式章节没有自动扩写标记、已知泛化残留句或孤立 `|` 表格残留。
 - `verify-sql-examples` 成功，第 2 章 SQL 样例引用和 schema 一致。
 - `projects:generate-runbook` 成功，从 `project-workbench/project-manifest.json` 生成 `docs/project-runbook.md`。
-- `verify-project-workbench` 成功，第 14 章七个项目都有固定验收骨架、机器可读 manifest、生成式执行总表、站点状态入口和交付物清单；manifest 保留当前运行状态与阻塞项，避免把静态产物误标成端到端完成；项目 1 有独立运行入口、PostgreSQL 17 Docker Compose 和运行记录模板；项目 2 有 ClickHouse DDL、字段映射、GMV 查询、表设计说明、同步策略、静态运行入口和对账/运行记录模板；项目 3 有 CDC 事件、Kafka Topic、Flink SQL、Sink DDL 和 Exactly Once 边界说明；项目 4 有对象存储布局、Iceberg DDL、Trino 查询、Spark 转换和演化记录；项目 5 有 pgvector schema、权限过滤检索、评测集、Chunk 策略和检索日志模板；项目 6 有 ontology、三元组、Neo4j/NebulaGraph 查询、GraphRAG 上下文和图查询日志；项目 7 有治理 schema、指标字典、血缘、质量规则、权限策略和审计模板。
+- `verify-project-workbench` 成功，第 14 章七个项目都有固定验收骨架、机器可读 manifest、生成式执行总表、站点状态入口和交付物清单；manifest 保留当前运行状态与阻塞项，避免把静态产物误标成端到端完成；项目 1 有独立运行入口、PostgreSQL 17 Docker Compose 和运行记录模板；项目 2 有 ClickHouse DDL、字段映射、GMV 查询、表设计说明、同步策略、静态运行入口和对账/运行记录模板；项目 3 有 CDC 事件、Kafka Topic、Flink SQL、Sink DDL、Exactly Once 边界说明、静态运行入口和运行记录模板；项目 4 有对象存储布局、Iceberg DDL、Trino 查询、Spark 转换、演化记录、静态运行入口和运行记录模板；项目 5 有 pgvector schema、权限过滤检索、评测集、Chunk 策略、检索日志模板、静态运行入口和运行记录模板；项目 6 有 ontology、三元组、Neo4j/NebulaGraph 查询、GraphRAG 上下文、图查询日志、静态运行入口和运行记录模板；项目 7 有治理 schema、指标字典、血缘、质量规则、权限策略、审计模板、静态运行入口和运行记录模板。
 - `facts:generate-records` 成功，从结构化 register 生成 18 个逐条事实核查记录文件。
 - `verify-fact-check-matrix` 成功，事实核查矩阵包含 18 条 FC 项，结构化 register 包含 18 个来源和章节映射，`docs/fact-check-records/` 包含 18 个逐条处理记录文件，证据台账包含 18 个对应入口；FC-001 至 FC-018 均已完成官方来源或安全资料初核，且没有无证据完成声明。
 - `verify-completion-audit` 成功，完成审计和目标覆盖映射保留真实运行、事实核查、完整可运行项目和出版定稿的未完成边界。
@@ -87,19 +92,25 @@ project-workbench/projects/02-postgres-to-clickhouse/run.sh
 - `bash -n scripts/run-postgres-examples.sh` 成功，PostgreSQL 样例运行脚本语法有效。
 - `project-workbench/projects/01-postgresql-analytics/run.sh` 已实际探测：`sql:verify` 成功，随后因当前环境缺少 PostgreSQL 客户端停止，并明确提示可用本地 PostgreSQL 或 Docker Compose 环境重跑。
 - `project-workbench/projects/02-postgres-to-clickhouse/run.sh` 已实际执行：静态检查成功，随后因当前环境缺少 ClickHouse 客户端，仅明确提示引擎执行未验证。
+- `project-workbench/projects/03-cdc-realtime-warehouse/run.sh` 已实际执行：静态检查成功，随后因当前环境缺少 Kafka、Flink SQL Client 和 ClickHouse 客户端，仅明确提示引擎执行未验证。
+- `project-workbench/projects/04-mini-lakehouse/run.sh` 已实际执行：静态检查成功，随后因当前环境缺少 Spark SQL 和 Trino 客户端，仅明确提示引擎执行未验证。
+- `project-workbench/projects/05-rag-vector-kb/run.sh` 已实际执行：静态检查成功，随后因当前环境缺少 PostgreSQL 客户端，仅明确提示 pgvector 和 RAG 评测执行未验证。
+- `project-workbench/projects/06-knowledge-graph-graphrag/run.sh` 已实际执行：静态检查成功，随后因当前环境缺少 Neo4j 和 NebulaGraph 客户端，仅明确提示图数据库和 GraphRAG 执行未验证。
+- `project-workbench/projects/07-governance-mini-platform/run.sh` 已实际执行：静态检查成功，随后因当前环境缺少 PostgreSQL 客户端，仅明确提示治理数据库、质量规则和权限策略执行未验证。
 
 ## 三、已完成（2026-05-03 更新）
 
-1. **项目实战骨架已建立**：`project-workbench/` 已为第 14 章七个项目提供固定交付结构、`DELIVERABLES.md` 清单、`project-manifest.json` 状态表、`docs/project-runbook.md` 执行总表和 `site/projects.md` 站点状态入口，并由 `node scripts/verify-project-workbench.mjs` 检查；项目 1 已有 `run.sh`、PostgreSQL 17 `docker-compose.yml` 和运行记录模板；项目 2 已有 ClickHouse DDL、字段映射、GMV 查询、表设计说明、同步策略、静态运行入口和对账/运行记录模板；项目 3 已有 CDC 事件、Kafka Topic、Flink SQL、Sink DDL 和 Exactly Once 边界说明；项目 4 已有对象存储布局、Iceberg DDL、Trino 查询、Spark 转换和演化记录；项目 5 已有 pgvector schema、权限过滤检索、评测集、Chunk 策略和检索日志模板；项目 6 已有 ontology、三元组、Neo4j/NebulaGraph 查询、GraphRAG 上下文和图查询日志；项目 7 已有治理 schema、指标字典、血缘、质量规则、权限策略和审计模板。
+1. **项目实战骨架已建立**：`project-workbench/` 已为第 14 章七个项目提供固定交付结构、`DELIVERABLES.md` 清单、`project-manifest.json` 状态表、`docs/project-runbook.md` 执行总表和 `site/projects.md` 站点状态入口，并由 `node scripts/verify-project-workbench.mjs` 检查；项目 1 已有 `run.sh`、PostgreSQL 17 `docker-compose.yml`、运行记录模板、架构图、业务事实关系、指标口径卡片、24 条分析 SQL、3 条 EXPLAIN 记录、索引优化对比、分区/物化视图设计；项目 2 已有架构图、ClickHouse DDL、字段映射、GMV 查询、明细查询 SQL、表设计说明、同步策略、对账口径说明、性能对比记录模板、静态运行入口和对账/运行记录模板；项目 3 已有架构图、CDC 伪运行流程、Kafka 消费样例、Topic 验证说明、CDC 事件、Kafka Topic、Flink SQL、Sink DDL、Exactly Once 边界说明、静态运行入口和运行记录模板；项目 4 已有架构图、导出伪代码、Trino/Spark 结果模板、对象存储布局、Iceberg DDL、Trino 查询、Spark 转换、演化记录、静态运行入口和运行记录模板；项目 5 已有架构图、文档解析规则、RAG 评测结果模板、pgvector schema、权限过滤检索、评测集、Chunk 策略、检索日志模板、静态运行入口和运行记录模板；项目 6 已有架构图、GraphRAG 证据拼接检查项、路径查询结果模板、ontology、三元组、Neo4j/NebulaGraph 查询、GraphRAG 上下文、图查询日志、静态运行入口和运行记录模板；项目 7 已有架构图、质量规则运行结果模板、权限策略测试记录模板、治理 schema、指标字典、血缘、质量规则、权限策略、审计模板、静态运行入口和运行记录模板。
 2. **SQL 静态验证已完成**：`node scripts/verify-sql-examples.mjs` 可检查第 2 章 SQL 样例与 schema 引用一致。
 3. **事实核查初核已完成**：`docs/fact-check-register.json` 已提供 18 项结构化来源和章节映射，`docs/fact-check-records/` 已提供 18 个逐条处理记录文件，`docs/fact-check-evidence.md` 已提供 18 项证据入口；FC-001 至 FC-018 均已完成官方来源或安全资料初核；`node scripts/verify-fact-check-matrix.mjs` 会检查矩阵、register、逐条记录和证据入口完整性，并防止误写“全部完成”。
 4. **基础编辑质量门已建立**：`node scripts/verify-editorial-quality.mjs` 会阻止自动扩写标记、已知泛化残留句和明显损坏的 Markdown 表格进入 `pnpm verify` 绿灯。
 5. **正文深度门槛已建立**：`node scripts/verify-manuscript-depth.mjs` 会检查 0-17 章最低字符量、三级结构和表格化检查/对比内容，避免章节退化成纲要。
+6. **项目交付物已补齐**：七个项目均有架构链路图、说明文档、查询样例、结果模板等静态交付物；项目 1 有 24 条分析 SQL、指标口径卡片、索引优化对比、分区/物化视图设计；项目 2-7 均有架构图、明细查询/伪代码/评测结果/检查项等补充交付物；所有新增交付物已加入 `requiredArtifacts` 并由 `verify-project-workbench` 检查。
 
 ## 四、尚未完成
 
 1. **SQL 真实数据库执行尚未在当前环境完成**：当前环境未发现 `psql`、`createdb` 或 `docker`，因此只能确认静态一致性和运行脚本语法，不能声称 PostgreSQL 实库已跑通。
-2. **项目实战仍是可检查骨架、状态表和交付清单，不是完整可运行系统**：七个项目已有目录、结构、验收字段、manifest 和交付物清单，但还没有完整 Docker Compose、任务脚本和端到端运行日志。
+2. **项目实战仍是可检查骨架、状态表和交付清单，不是完整可运行系统**：七个项目已有目录、结构、验收字段、manifest、交付物清单、`run.sh` 和运行记录模板，但还没有完整 Docker Compose、运行时编排和端到端运行日志。
 3. **事实核查仍需可复核证据闭环和出版级复核**：18 个高风险条目都已完成初核并记录处理动作，但所有条目仍保留“需逐章留存处理记录”状态；出版定稿前需要按具体产品版本、部署方式和新增内容继续复核。
 4. **出版级编辑**：术语一致性、第 10-13 章内容深度补强、视觉资源。
 

@@ -1,68 +1,16 @@
 ### 5.10 常见建模模式
 
-上一节学习了维度表设计，了解了维度表的类型、设计原则、SCD处理等。
+基础的星型模型能覆盖 70% 的场景。剩下的 30% 有一些反复出现的模式——它们不是特殊情况，而是维度建模发展过程中总结出来的最佳实践。掌握这些模式，你不会在面对多对多关系、低基数属性、多重日期时反复发明轮子。
 
-现在学习维度建模中的常见设计模式。
+#### 维度表模式
 
-**场景**：
-```yaml
-数据仓库设计过程中的复杂场景：
-  
-你："订单事实表需要关联商品，但一个订单有多个商品..."
-  
-数据架构师："用桥接表（Bridge Table）处理多对多关系"
-  
-你："用户维度表有很多低基数的属性（性别、年龄段...）"
-  
-数据架构师："用垃圾维度（Junk Dimension）"
-  
-新同事："什么是桥接表？什么是垃圾维度？"
-```
+**垃圾维度（Junk Dimension）**
 
-**问题**：
-- 什么是常见的维度建模模式？
-- 如何处理多对多关系？
-- 如何处理低基数属性？
-- 如何处理特殊场景？
+订单事实表经常附带一堆低基数的标志字段：is_new_user、is_vip_user、is_first_order、has_discount、payment_type、order_source。每个字段就三到五个值。如果放在事实表里，事实表多了 6 个列，列越多扫描越慢。如果每个独立建一个维度表，你就多了 6 张小表，JOIN 次数激增。
 
-**答案**：**掌握常见的维度建模模式，根据场景选择合适的模式**
+垃圾维度的做法是把这些低基数属性打包进一张维度表：
 
-#### 一、维度表常见模式
-
-##### 1.1 垃圾维度（Junk Dimension）
-
-**定义**：将多个低基数的标志字段或属性组合成一个维度表
-
-**场景**：
-```yaml
-问题：
-  - 事实表有很多标志字段（is_new, is_vip, is_active...）
-  - 这些字段基数低（通常只有几个值）
-  - 如果直接放在事实表，事实表会很大
-  - 如果每个字段一个维度表，会有很多小表
-  
-解决：
-  - 将多个低基数字段组合成一个维度表
-  - 事实表只保留一个外键
-```
-
-**示例**：
 ```sql
--- 原始设计：事实表包含多个标志字段
-CREATE TABLE fact_orders (
-    order_id BIGINT,
-    date_id INT,
-    user_id BIGINT,
-    amount NUMERIC(10,2),
-    is_new_user BOOLEAN,        -- 新用户标志
-    is_vip_user BOOLEAN,        -- VIP用户标志
-    is_first_order BOOLEAN,     -- 首单标志
-    has_discount BOOLEAN,       -- 有折扣标志
-    payment_type VARCHAR(50),   -- 支付方式（低基数）
-    order_source VARCHAR(50)    -- 订单来源（低基数）
-);
-
--- 优化设计：使用垃圾维度
 CREATE TABLE dim_order_flags (
     flag_id INT PRIMARY KEY,
     is_new_user BOOLEAN,
@@ -73,833 +21,89 @@ CREATE TABLE dim_order_flags (
     order_source VARCHAR(50)
 );
 
+-- 事实表只保留一个外键
 CREATE TABLE fact_orders (
     order_id BIGINT,
     date_id INT,
     user_id BIGINT,
-    flag_id INT,                -- 垃圾维度外键
+    flag_id INT,          -- 垃圾维度外键
     amount NUMERIC(10,2)
 );
+```
 
--- 垃圾维度数据示例
-INSERT INTO dim_order_flags VALUES
-(1, true, false, true, false, 'alipay', 'app'),
-(2, false, true, false, true, 'wechat', 'web'),
-(3, false, false, false, false, 'card', 'app'),
-...;
+这 6 个字段的组合也就几百种可能值（6 个低基数字段的笛卡尔积实际值很少）。查询时直接 JOIN dim_order_flags：
 
--- 查询时关联
-SELECT
-    f.amount,
-    j.is_vip_user,
-    j.payment_type
+```sql
+SELECT f.amount, j.is_vip_user, j.payment_type
 FROM fact_orders f
 JOIN dim_order_flags j ON f.flag_id = j.flag_id;
 ```
 
-**优势**：
-```yaml
-减少事实表大小：
-  - 事实表只保留一个外键
-  - 不需要多个标志字段
-  
-提升查询性能：
-  - 减少事实表列数
-  - 提升扫描性能
-  
-便于管理：
-  - 集中管理低基数属性
-  - 便于维护
-```
+**角色扮演维度（Role-Playing Dimension）**
 
-##### 1.2 角色扮演维度（Role-Playing Dimension）
+订单有订单日期、发货日期、送达日期——三个日期，都是时间维度，但扮演不同的角色。不需要建三张时间维度表。同一张 dim_date 表，事实表里用三个不同的外键关联它：
 
-**定义**：同一个维度表在事实表中扮演不同的角色
-
-**场景**：
-```yaml
-问题：
-  - 订单有订单日期和发货日期
-  - 两个日期都是时间维度
-  - 但需要区分不同的角色
-  
-解决：
-  - 使用同一个时间维度表
-  - 事实表中有两个外键，分别扮演不同角色
-```
-
-**示例**：
 ```sql
--- 时间维度表（只有一个）
-CREATE TABLE dim_date (
-    date_id INT PRIMARY KEY,
-    date_value DATE,
-    year INT,
-    month INT,
-    day INT,
-    quarter INT,
-    week INT,
-    is_holiday BOOLEAN,
-    is_weekend BOOLEAN
-);
-
--- 事实表：日期维度扮演不同角色
 CREATE TABLE fact_orders (
     order_id BIGINT,
-    order_date_id INT,          -- 订单日期（角色1）
-    ship_date_id INT,           -- 发货日期（角色2）
-    deliver_date_id INT,        -- 送达日期（角色3）
+    order_date_id INT,       -- 订单日期（角色1）
+    ship_date_id INT,        -- 发货日期（角色2）
+    deliver_date_id INT,     -- 送达日期（角色3）
     user_id BIGINT,
     amount NUMERIC(10,2)
 );
 
--- 查询：订单日期到发货日期的间隔
-SELECT
-    o.order_id,
-    order_date.date_value as order_date,
-    ship_date.date_value as ship_date,
-    (ship_date.date_value - order_date.date_value) as days_to_ship
+-- 查询：订单到发货的间隔天数
+SELECT o.order_id,
+       order_d.date_value as order_date,
+       ship_d.date_value as ship_date,
+       (ship_d.date_value - order_d.date_value) as days_to_ship
 FROM fact_orders o
-JOIN dim_date order_date ON o.order_date_id = order_date.date_id
-JOIN dim_date ship_date ON o.ship_date_id = ship_date.date_id;
-
--- 查询：订单在星期几下单，星期几发货
-SELECT
-    order_date.week as order_week,
-    ship_date.week as ship_week,
-    count(*) as order_count
-FROM fact_orders o
-JOIN dim_date order_date ON o.order_date_id = order_date.date_id
-JOIN dim_date ship_date ON o.ship_date_id = ship_date.date_id
-GROUP BY order_date.week, ship_date.week;
+JOIN dim_date order_d ON o.order_date_id = order_d.date_id
+JOIN dim_date ship_d ON o.ship_date_id = ship_d.date_id;
 ```
 
-**优势**：
-```yaml
-复用维度表：
-  - 不需要创建多个时间维度表
-  - 减少维护成本
-  
-支持多角度分析：
-  - 可以按订单日期分析
-  - 可以按发货日期分析
-  - 可以按间隔时间分析
-```
+通过给同一个维度表不同的别名（order_d、ship_d），SQL 区分了不同的"角色"。
 
-##### 1.3 缩减维度（Shrunken Dimension）
+**缩减维度（Shrunken Dimension）**
 
-**定义**：维度表的子集，用于特定的事实表
+完整用户维度表有 30 个字段、1000 万行。但月度快照事实表只需要用户的 user_id 和 segment（分群）。把完整维度表全部 JOIN 进来浪费资源。
 
-**场景**：
-```yaml
-问题：
-  - 月度快照事实表只需要部分用户（活跃用户）
-  - 但用户维度表包含所有用户
-  
-解决：
-  - 创建缩减维度，只包含需要的用户
-  - 月度快照事实表关联缩减维度
-```
+缩减维度是完整维度的子集。只包含某个事实表需要的行和列：
 
-**示例**：
 ```sql
--- 完整用户维度
-CREATE TABLE dim_users (
-    user_id BIGINT PRIMARY KEY,
-    name VARCHAR(100),
-    city VARCHAR(100),
-    province VARCHAR(100),
-    segment VARCHAR(50),
-    register_date DATE,
-    total_orders INT,
-    total_amount NUMERIC(10,2)
-);
+-- 完整用户维度（1000 万行）
+CREATE TABLE dim_users (...);  -- 30 列
 
--- 缩减维度：只包含月度活跃用户
+-- 缩减维度：只要活跃用户 + 少量列
 CREATE TABLE dim_active_users (
     user_id BIGINT PRIMARY KEY,
     name VARCHAR(100),
     segment VARCHAR(50)
-);
-
--- 月度快照事实表
-CREATE TABLE fact_monthly_user_snapshot (
-    snapshot_id BIGINT,
-    snapshot_date_id INT,
-    user_id BIGINT,
-    month_orders INT,
-    month_amount NUMERIC(10,2)
-);
-
--- 查询：关联缩减维度
-SELECT
-    s.snapshot_date_id,
-    u.segment,
-    sum(s.month_amount) as total_amount
-FROM fact_monthly_user_snapshot s
-JOIN dim_active_users u ON s.user_id = u.user_id
-GROUP BY s.snapshot_date_id, u.segment;
+);  -- 可能只有 200 万行，3 列
 ```
 
-**优势**：
-```yaml
-减少数据量：
-  - 缩减维度只包含需要的维度
-  - 减少JOIN的数据量
-  
-提升性能：
-  - 减少JOIN的数据量
-  - 提升查询性能
-```
+**一致性维度（Conformed Dimension）**
 
-##### 1.4 一致性维度（Conformed Dimension）
+同一个用户维度表被订单事实表、浏览事实表、支付事实表共享。这意味着你可以跨事实表做关联分析："浏览过商品但没有下单的用户有什么特征？"
 
-**定义**：跨多个事实表共享的维度表
+一致性维度是数仓中最重要的维度管理原则：不同事实表共享同一套维度定义和维度数据。它保证了跨业务过程的指标口径一致。
 
-**场景**：
-```yaml
-问题：
-  - 订单事实表需要用户维度
-  - 用户行为事实表也需要用户维度
-  - 两个事实表需要关联分析
-  
-解决：
-  - 使用同一个用户维度表
-  - 确保维度定义一致
-```
+#### 事实表模式
 
-**示例**：
-```sql
--- 一致性维度：用户维度
-CREATE TABLE dim_users (
-    user_id BIGINT PRIMARY KEY,
-    name VARCHAR(100),
-    city VARCHAR(100),
-    segment VARCHAR(50),
-    register_date DATE
-);
+**桥接表（Bridge Table）**
 
--- 事实表1：订单事实表
-CREATE TABLE fact_orders (
-    order_id BIGINT,
-    date_id INT,
-    user_id BIGINT,          -- 关联一致性维度
-    product_id BIGINT,
-    amount NUMERIC(10,2)
-);
+一个订单包含多个商品。事实表粒度是订单，但你还想按商品分析。桥接表处理这种多对多关系：
 
--- 事实表2：用户行为事实表
-CREATE TABLE fact_events (
-    event_id BIGINT,
-    date_id INT,
-    user_id BIGINT,          -- 关联一致性维度
-    event_type VARCHAR(50),
-    page_url VARCHAR(500)
-);
-
--- 跨事实表分析：订单用户的特征
-SELECT
-    u.segment,
-    count(DISTINCT o.order_id) as order_count,
-    count(DISTINCT e.event_id) as event_count
-FROM dim_users u
-LEFT JOIN fact_orders o ON u.user_id = o.user_id
-LEFT JOIN fact_events e ON u.user_id = e.user_id
-GROUP BY u.segment;
-```
-
-**优势**：
-```yaml
-跨事实表分析：
-  - 可以关联不同事实表
-  - 进行跨业务分析
-  
-一致性：
-  - 维度定义一致
-  - 确保数据一致性
-```
-
-#### 二、事实表常见模式
-
-##### 2.1 桥接表（Bridge Table）
-
-**定义**：处理多对多关系的中间表
-
-**场景**：
-```yaml
-问题：
-  - 一个订单包含多个商品
-  - 事实表粒度是订单，不是订单商品明细
-  
-解决：
-  - 事实表只记录订单级别的度量
-  - 桥接表记录订单和商品的多对多关系
-```
-
-**示例**：
 ```sql
 -- 订单事实表（粒度：订单）
 CREATE TABLE fact_orders (
     order_id BIGINT PRIMARY KEY,
-    date_id INT,
-    user_id BIGINT,
-    amount NUMERIC(10,2),           -- 订单总金额
-    quantity INT,                   -- 订单总数量
-    discount NUMERIC(10,2)          -- 订单总折扣
+    date_id INT, user_id BIGINT,
+    amount NUMERIC(10,2)   -- 订单总金额
 );
 
--- 桥接表：订单-商品多对多关系
-CREATE TABLE bridge_order_products (
-    order_id BIGINT,
-    product_id BIGINT,
-    product_quantity INT,           -- 该商品的数量
-    product_amount NUMERIC(10,2),   -- 该商品的金额
-    PRIMARY KEY (order_id, product_id)
-);
-
--- 查询：订单商品明细
-SELECT
-    o.order_id,
-    p.product_name,
-    b.product_quantity,
-    b.product_amount
-FROM fact_orders o
-JOIN bridge_order_products b ON o.order_id = b.order_id
-JOIN dim_products p ON b.product_id = p.product_id
-WHERE o.order_id = 12345;
-
--- 查询：包含某个商品的所有订单
-SELECT DISTINCT
-    o.order_id,
-    o.amount
-FROM fact_orders o
-JOIN bridge_order_products b ON o.order_id = b.order_id
-WHERE b.product_id = 999;
-
--- 查询：商品销售排名
-SELECT
-    b.product_id,
-    p.product_name,
-    sum(b.product_quantity) as total_quantity,
-    sum(b.product_amount) as total_amount
-FROM bridge_order_products b
-JOIN dim_products p ON b.product_id = p.product_id
-GROUP BY b.product_id, p.product_name
-ORDER BY total_amount DESC
-LIMIT 10;
-```
-
-**优势**：
-```yaml
-处理多对多：
-  - 事实表保持简单
-  - 桥接表处理多对多关系
-  
-灵活分析：
-  - 可以按订单分析
-  - 可以按商品分析
-  - 可以分析订单商品明细
-```
-
-##### 2.2 无事实事实表（Factless Fact Table）
-
-**定义**：只有维度外键，没有度量的 fact 表
-
-**场景**：
-```yaml
-问题：
-  - 需要记录事件，但没有数值度量
-  - 例如：学生出勤、用户登录、商品浏览
-  
-解决：
-  - 创建无事实事实表
-  - 只记录维度外键
-```
-
-**示例**：
-```sql
--- 无事实事实表：学生出勤
-CREATE TABLE fact_student_attendance (
-    student_id BIGINT,
-    date_id INT,
-    class_id INT,
-    is_present BOOLEAN,
-    PRIMARY KEY (student_id, date_id, class_id)
-);
-
--- 查询：学生出勤天数
-SELECT
-    s.student_name,
-    count(*) FILTER (WHERE f.is_present = true) as present_days,
-    count(*) FILTER (WHERE f.is_present = false) as absent_days
-FROM fact_student_attendance f
-JOIN dim_students s ON f.student_id = s.student_id
-WHERE f.date_id >= 20260101 AND f.date_id < 20260201
-GROUP BY s.student_name;
-
--- 无事实事实表：用户登录
-CREATE TABLE fact_user_login (
-    user_id BIGINT,
-    date_id INT,
-    session_id VARCHAR(100),
-    login_time TIMESTAMP,
-    PRIMARY KEY (user_id, date_id, session_id)
-);
-
--- 查询：用户登录次数
-SELECT
-    user_id,
-    date_id,
-    count(*) as login_count
-FROM fact_user_login
-WHERE date_id >= 20260101
-GROUP BY user_id, date_id;
-
--- 无事实事实表：商品浏览
-CREATE TABLE fact_product_views (
-    user_id BIGINT,
-    product_id BIGINT,
-    date_id INT,
-    view_time TIMESTAMP,
-    session_id VARCHAR(100)
-);
-
--- 查询：商品浏览次数
-SELECT
-    product_id,
-    count(*) as view_count,
-    count(DISTINCT user_id) as unique_viewers
-FROM fact_product_views
-WHERE date_id >= 20260101
-GROUP BY product_id
-ORDER BY view_count DESC;
-```
-
-**优势**：
-```yaml
-记录事件：
-  - 记录事件发生
-  - 没有数值度量
-  
-支持分析：
-  - 可以分析事件次数
-  - 可以分析事件模式
-```
-
-##### 2.3 聚合事实表（Aggregate Fact Table）
-
-**定义**：预先聚合的 fact 表
-
-**场景**：
-```yaml
-问题：
-  - 常用查询需要聚合计算
-  - 每次查询都聚合很慢
-  
-解决：
-  - 创建聚合事实表
-  - 预先计算常用聚合
-```
-
-**示例**：
-```sql
--- 明细事实表
-CREATE TABLE fact_orders (
-    order_id BIGINT,
-    date_id INT,
-    user_id BIGINT,
-    product_id BIGINT,
-    amount NUMERIC(10,2),
-    quantity INT
-);
-
--- 聚合事实表：每日GMV
-CREATE TABLE fact_daily_gmv (
-    date_id INT PRIMARY KEY,
-    order_count BIGINT,
-    total_amount NUMERIC(20,2),
-    total_quantity BIGINT,
-    avg_amount NUMERIC(10,2)
-);
-
--- 聚合事实表：用户GMV
-CREATE TABLE fact_user_gmv (
-    user_id BIGINT PRIMARY KEY,
-    order_count BIGINT,
-    total_amount NUMERIC(20,2),
-    total_quantity BIGINT,
-    avg_amount NUMERIC(10,2),
-    first_order_date DATE,
-    last_order_date DATE
-);
-
--- 聚合事实表：商品GMV
-CREATE TABLE fact_product_gmv (
-    product_id BIGINT PRIMARY KEY,
-    order_count BIGINT,
-    total_amount NUMERIC(20,2),
-    total_quantity BIGINT,
-    avg_amount NUMERIC(10,2)
-);
-
--- 查询：直接使用聚合事实表（快速）
-SELECT 
-    date_id,
-    total_amount as gmv,
-    order_count
-FROM fact_daily_gmv
-WHERE date_id >= 20260101 AND date_id < 20260201
-ORDER BY date_id;
-
--- 不需要：
--- SELECT date_id, sum(amount) as gmv, count(*) as order_count
--- FROM fact_orders
--- WHERE date_id >= 20260101 AND date_id < 20260201
--- GROUP BY date_id;
-```
-
-**优势**：
-```yaml
-提升查询性能：
-  - 不需要实时聚合
-  - 查询速度更快
-  
-减轻系统负载：
-  - 减少聚合计算
-  - 降低系统负载
-```
-
-#### 三、高级模式
-
-##### 3.1 退化维度（Degenerate Dimension）
-
-**定义**：没有对应维度表的维度，直接放在事实表中
-
-**场景**：
-```yaml
-问题：
-  - 订单号、发票号等既是维度又是标识
-  - 没有额外的属性
-  - 不需要单独的维度表
-  
-解决：
-  - 退化维度直接放在事实表中
-  - 不创建维度表
-```
-
-**示例**：
-```sql
--- 事实表：包含退化维度
-CREATE TABLE fact_orders (
-    order_id BIGINT,                -- 退化维度（没有对应的dim_orders）
-    invoice_number VARCHAR(50),     -- 退化维度（没有对应的dim_invoices）
-    date_id INT,
-    user_id BIGINT,
-    product_id BIGINT,
-    amount NUMERIC(10,2)
-);
-
--- 退化维度的作用：作为标识，用于GROUP BY或WHERE
--- 查询：某个订单的详细信息
-SELECT * FROM fact_orders WHERE order_id = 12345;
-
--- 查询：每个订单的金额（退化维度作为GROUP BY维度）
-SELECT 
-    order_id,
-    sum(amount) as order_amount
-FROM fact_orders
-GROUP BY order_id;
-
--- 注意：退化维度没有对应的维度表
--- 不需要：CREATE TABLE dim_orders (...);
-```
-
-**优势**：
-```yaml
-简化设计：
-  - 不需要为每个标识创建维度表
-  - 减少表数量
-  
-保留标识：
-  - 保留业务标识
-  - 便于追踪和分析
-```
-
-##### 3.2 外部维度（Outrigger Dimension）
-
-**定义**：维度表的维度，描述维度的某个属性
-
-**场景**：
-```yaml
-问题：
-  - 用户维度包含地址信息
-  - 地址本身有层级（省、市、区）
-  - 需要按地址层级分析
-  
-解决：
-  - 创建地理维度表
-  - 用户维度关联地理维度
-```
-
-**示例**：
-```sql
--- 外部维度：地理维度
-CREATE TABLE dim_location (
-    location_id INT PRIMARY KEY,
-    country VARCHAR(100),
-    province VARCHAR(100),
-    city VARCHAR(100),
-    district VARCHAR(100)
-);
-
--- 用户维度：关联外部维度
-CREATE TABLE dim_users (
-    user_id BIGINT PRIMARY KEY,
-    name VARCHAR(100),
-    location_id INT,          -- 关联外部维度
-    segment VARCHAR(50)
-);
-
--- 事实表
-CREATE TABLE fact_orders (
-    order_id BIGINT,
-    date_id INT,
-    user_id BIGINT
-);
-
--- 查询：按城市分析
-SELECT
-    l.city,
-    count(*) as order_count
-FROM fact_orders f
-JOIN dim_users u ON f.user_id = u.user_id
-JOIN dim_location l ON u.location_id = l.location_id
-GROUP BY l.city;
-
--- 查询：按省份分析
-SELECT
-    l.province,
-    count(*) as order_count
-FROM fact_orders f
-JOIN dim_users u ON f.user_id = u.user_id
-JOIN dim_location l ON u.location_id = l.location_id
-GROUP BY l.province;
-```
-
-**优势**：
-```yaml
-层级分析：
-  - 支持按层级分析
-  - 省份、城市、区域
-  
-减少冗余：
-  - 地理信息统一管理
-  - 减少冗余
-```
-
-#### 四、模式选择原则
-
-##### 4.1 原则1：根据场景选择
-
-**垃圾维度**：
-```yaml
-场景：
-  - 多个低基数属性
-  - 标志字段多
-  
-示例：
-  - is_new, is_vip, is_active
-  - payment_type, order_source
-```
-
-**角色扮演维度**：
-```yaml
-场景：
-  - 同一维度表多次使用
-  - 需要区分角色
-  
-示例：
-  - 订单日期、发货日期
-  - 买方用户、卖方用户
-```
-
-**桥接表**：
-```yaml
-场景：
-  - 多对多关系
-  - 事实表粒度不一致
-  
-示例：
-  - 订单-商品多对多
-  - 学生-课程多对多
-```
-
-**无事实事实表**：
-```yaml
-场景：
-  - 记录事件
-  - 没有数值度量
-  
-示例：
-  - 学生出勤
-  - 用户登录
-  - 商品浏览
-```
-
-##### 4.2 原则2：性能 vs 复杂度
-
-**简单场景**：
-```yaml
-设计：
-  - 简单的星型模型
-  - 不使用高级模式
-  
-优势：
-  - 设计简单
-  - 易于理解
-  
-劣势：
-  - 可能性能不佳
-  - 表较大
-```
-
-**复杂场景**：
-```yaml
-设计：
-  - 使用高级模式
-  - 垃圾维度、桥接表等
-  
-优势：
-  - 性能更好
-  - 表更精简
-  
-劣势：
-  - 设计复杂
-  - 难以理解
-```
-
-**建议**：
-```yaml
-小项目：
-  - 简单设计优先
-  - 避免过度设计
-  
-大项目：
-  - 性能优先
-  - 使用高级模式
-```
-
-#### 五、常见误区
-
-**误区一：模式越多越好**
-
-- **说明**：模式要根据需求，不是越多越好
-- **后果**：过度设计，维护成本高
-- **正确理解**：
-  - 根据场景选择
-  - 避免过度设计
-  - 简单优先
-
-**误区二：垃圾维度是"垃圾"**
-
-- **说明**：垃圾维度不是垃圾，是合理的维度设计
-- **后果**：理解错误
-- **正确理解**：
-  - 垃圾维度是专业术语
-  - 用于低基数属性
-  - 提升性能
-
-**误区三：桥接表就是关联表**
-
-- **说明**：桥接表是处理多对多关系的特殊表
-- **后果**：理解错误
-- **正确理解**：
-  - 桥接表处理多对多
-  - 不是简单的关联表
-  - 有特殊作用
-
-**误区四：无事实事实表没用**
-
-- **说明**：无事实事实表记录事件，有价值
-- **后果**：不使用
-- **正确理解**：
-  - 记录事件发生
-  - 支持事件分析
-  - 有实际价值
-
-**误区五：退化维度不规范**
-
-- **说明**：退化维度是合理的简化设计
-- **后果**：不使用
-- **正确理解**：
-  - 退化维度是标识
-  - 没有额外属性
-  - 可以直接使用
-
-#### 六、实战任务
-
-**任务1：设计垃圾维度**
-
-设计订单事实表的垃圾维度：
-
-```sql
--- 需求分析
-标志字段：
-  - is_new_user（是否新用户）
-  - is_vip_user（是否VIP用户）
-  - is_first_order（是否首单）
-  - has_discount（有折扣）
-  - payment_type（支付方式）
-  - order_source（订单来源）
-
--- 设计
-CREATE TABLE dim_order_flags (
-    flag_id INT PRIMARY KEY,
-    is_new_user BOOLEAN,
-    is_vip_user BOOLEAN,
-    is_first_order BOOLEAN,
-    has_discount BOOLEAN,
-    payment_type VARCHAR(50),
-    order_source VARCHAR(50)
-);
-
-CREATE TABLE fact_orders (
-    order_id BIGINT PRIMARY KEY,
-    date_id INT NOT NULL,
-    user_id BIGINT NOT NULL,
-    flag_id INT NOT NULL,
-    amount NUMERIC(10,2) NOT NULL
-);
-
--- 查询
-SELECT
-    f.amount,
-    j.is_vip_user,
-    j.payment_type
-FROM fact_orders f
-JOIN dim_order_flags j ON f.flag_id = j.flag_id;
-```
-
-**任务2：设计桥接表**
-
-设计订单-商品桥接表：
-
-```sql
--- 需求分析
-需求：
-  - 一个订单包含多个商品
-  - 事实表粒度是订单
-  - 需要记录订单商品明细
-
--- 设计
-CREATE TABLE fact_orders (
-    order_id BIGINT PRIMARY KEY,
-    date_id INT NOT NULL,
-    user_id BIGINT NOT NULL,
-    amount NUMERIC(10,2) NOT NULL,
-    quantity INT NOT NULL
-);
-
+-- 桥接表：订单-商品明细
 CREATE TABLE bridge_order_products (
     order_id BIGINT,
     product_id BIGINT,
@@ -908,75 +112,107 @@ CREATE TABLE bridge_order_products (
     PRIMARY KEY (order_id, product_id)
 );
 
--- 查询
-SELECT
-    o.order_id,
-    p.product_name,
-    b.product_quantity,
-    b.product_amount
-FROM fact_orders o
-JOIN bridge_order_products b ON o.order_id = b.order_id
+-- 按商品分析销量
+SELECT p.product_name, sum(b.product_quantity) as total_sold
+FROM bridge_order_products b
 JOIN dim_products p ON b.product_id = p.product_id
-WHERE o.order_id = 12345;
+GROUP BY p.product_name;
 ```
 
-**任务3：设计角色扮演维度**
+桥接表让事实表的粒度保持纯粹，同时不丢失多对多关系的明细数据。
 
-设计订单事实表的角色扮演维度：
+**无事实事实表（Factless Fact Table）**
+
+有些事件只有"发生"这个事实，没有数值度量。学生出勤：学生张三在 2026-01-15 上数学课——没有金额、没有数量。但你需要统计出勤天数，COUNT 本身就成了"度量"。
 
 ```sql
--- 需求分析
-需求：
-  - 订单有订单日期、发货日期、送达日期
-  - 都是时间维度
-  - 需要区分不同角色
-
--- 设计
-CREATE TABLE dim_date (
-    date_id INT PRIMARY KEY,
-    date_value DATE,
-    year INT,
-    month INT,
-    day INT,
-    week INT,
-    is_holiday BOOLEAN,
-    is_weekend BOOLEAN
+CREATE TABLE fact_student_attendance (
+    student_id BIGINT,
+    date_id INT,
+    class_id INT,
+    PRIMARY KEY (student_id, date_id, class_id)
 );
 
-CREATE TABLE fact_orders (
-    order_id BIGINT PRIMARY KEY,
-    order_date_id INT NOT NULL,
-    ship_date_id INT,
-    deliver_date_id INT,
-    user_id BIGINT NOT NULL,
-    amount NUMERIC(10,2) NOT NULL
-);
-
--- 查询：订单到发货的天数
-SELECT
-    o.order_id,
-    order_date.date_value as order_date,
-    ship_date.date_value as ship_date,
-    (ship_date.date_value - order_date.date_value) as days_to_ship
-FROM fact_orders o
-JOIN dim_date order_date ON o.order_date_id = order_date.date_id
-JOIN dim_date ship_date ON o.ship_date_id = ship_date.date_id;
+-- 统计出勤天数
+SELECT student_id, count(*) as attendance_days
+FROM fact_student_attendance
+WHERE date_id >= 20260101 AND date_id < 20260201
+GROUP BY student_id;
 ```
 
-#### 七、小结
+用户登录、商品浏览、页面访问——这些行为数据天然适合无事实事实表。
 
-常见建模模式提供了处理特殊场景的方法，根据场景选择合适的模式。
+**聚合事实表（Aggregate Fact Table）**
 
-核心要点：
-- 垃圾维度：低基数属性组合，减少事实表大小
-- 角色扮演维度：同一维度表多次使用，区分不同角色
-- 缩减维度：维度表子集，用于特定事实表
-- 一致性维度：跨事实表共享，支持跨业务分析
-- 桥接表：处理多对多关系，保持事实表简单
-- 无事实事实表：记录事件，没有度量
-- 聚合事实表：预先聚合，提升查询性能
-- 退化维度：没有维度表的维度，简化设计
-- 外部维度：维度的维度，支持层级分析
-- 选择原则：根据场景选择，平衡性能和复杂度
+这是把 DWS 层的思路搬到事实表层面。常见的高频查询（每日 GMV、用户累计消费）在聚合事实表里预计算好。跟 DWS 层的区别：聚合事实表更偏向"事实层面的汇总"（保持事实表的结构），DWS 层更偏向"为应用准备的汇总"。
 
-下一节将进入指标体系设计，了解如何设计指标体系、指标管理方法等。
+```sql
+CREATE TABLE fact_daily_gmv (
+    date_id INT PRIMARY KEY,
+    order_count BIGINT,
+    total_amount NUMERIC(20,2)
+);
+```
+
+#### 高级模式
+
+**退化维度（Degenerate Dimension）**
+
+有些维度没有对应的维度表——它们只是标识符。订单号、发票号、事务编号。这些 ID 本身不含描述信息（不需要一张 dim_orders 表存 order_id 的其他属性），但在查询中经常需要用于 GROUP BY 或 WHERE。
+
+退化维度直接放在事实表里：
+
+```sql
+CREATE TABLE fact_orders (
+    order_id BIGINT,          -- 退化维度
+    invoice_number VARCHAR(50), -- 退化维度
+    date_id INT,              -- 真实维度外键
+    user_id BIGINT,           -- 真实维度外键
+    amount NUMERIC(10,2)
+);
+```
+
+**外部维度（Outrigger Dimension）**
+
+维度表关联另一张维度表。比如用户维度关联地理维度（location_id），地理维度有完整的层级结构。
+
+```sql
+CREATE TABLE dim_users (
+    user_id BIGINT PRIMARY KEY,
+    name VARCHAR(100),
+    location_id INT,  -- 关联外部维度 dim_location
+    segment VARCHAR(50)
+);
+
+CREATE TABLE dim_location (
+    location_id INT PRIMARY KEY,
+    country VARCHAR(100), province VARCHAR(100),
+    city VARCHAR(100), district VARCHAR(100)
+);
+```
+
+查询时事实表 → 用户维度 → 地理维度，跳两级。这种模式在需要地理层级分析时有用。但如果分析维度只到城市级别，直接把 city 冗余到用户维度表里更简单。
+
+#### 模式选择原则
+
+两个维度判断：
+
+- **数据量**：维度表大到影响 JOIN 性能？用缩减维度。标志字段多？用垃圾维度。
+- **关系复杂度**：多对多关系？桥接表。同一维度多次引用？角色扮演维度。
+- **变化频率**：维度属性频繁变？Type 2 SCD。几乎不变？直接冗余。
+
+简单优先。当简单的星型模型够用时不要引入复杂模式。当查询开始变慢（10 秒以上）或者 SQL 开始复杂（5 个以上 JOIN），再考虑引入模式优化。
+
+#### 常见误区
+
+**"模式越多越专业"**。能用标准星型模型解决的，不要上模式。新手最容易犯的错误是在一张还没到 100 万行的事实表上设计垃圾维度和桥接表——过度设计。
+
+**"垃圾维度就是垃圾"**。垃圾维度（Junk Dimension）的 "junk" 指这些标志字段"杂七杂八地凑在一起"，不是说这个设计不好。恰恰相反，它是处理低基数属性的标准做法。
+
+**"桥接表就是普通关联表"**。桥接表承载多对多关系的业务语义（订单-商品明细），不只是技术上的中间表。它的设计直接影响"按商品分析"的数据粒度。
+
+**"无事实事实表没用"**。事件驱动分析（用户行为、页面访问、出勤记录）是数仓的重要场景。无事实事实表的 COUNT 就是它的度量。它反而是某些分析（留存、转化、频率）的基础表。
+
+#### 小结
+
+六种模式覆盖了维度建模中反复出现的设计场景：垃圾维度（低基数属性打包）、角色扮演维度（同一维度多次引用）、一致性维度（跨事实表共享）、桥接表（多对多关系）、无事实事实表（记录事件）、聚合事实表（预计算）。选择原则是简单优先——复杂模式在你真正需要时才引入。下一节讲指标体系设计——指标的定义、分层、口径管理。

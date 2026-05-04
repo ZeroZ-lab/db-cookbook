@@ -123,6 +123,47 @@ const compose = fs.readFileSync(projectOneCompose, 'utf8');
 assert(compose.includes('postgres:17'), 'Project 1 Docker Compose must use PostgreSQL 17');
 assert(compose.includes('db_cookbook_lab'), 'Project 1 Docker Compose must create db_cookbook_lab');
 
+const projectOneDocsRoot = path.join(projectRoot, '01-postgresql-analytics', 'docs');
+const projectOneArchitecture = path.join(projectOneDocsRoot, 'architecture.md');
+const projectOneMetricDefs = path.join(projectOneDocsRoot, 'metric-definitions.md');
+const projectOneBfr = path.join(projectOneDocsRoot, 'business-fact-relationship.md');
+const projectOneQueryCats = path.join(projectOneDocsRoot, 'query-categories.md');
+const projectOneDdlSource = path.join(projectOneDocsRoot, 'ddl-source.md');
+const projectOneIndexOpt = path.join(projectOneDocsRoot, 'index-optimization.md');
+const projectOnePmv = path.join(projectOneDocsRoot, 'partition-materialized-views.md');
+const projectOneAnalysisQueries = path.join(projectRoot, '01-postgresql-analytics', 'queries', 'analysis-queries.sql');
+const projectOneExplainRecords = path.join(projectRoot, '01-postgresql-analytics', 'queries', 'explain-records.sql');
+
+for (const file of [
+  projectOneArchitecture,
+  projectOneMetricDefs,
+  projectOneBfr,
+  projectOneQueryCats,
+  projectOneDdlSource,
+  projectOneIndexOpt,
+  projectOnePmv,
+  projectOneAnalysisQueries,
+  projectOneExplainRecords
+]) {
+  assert(fs.existsSync(file), `Missing project 1 artifact: ${file}`);
+}
+
+const projectOneArchitectureText = fs.readFileSync(projectOneArchitecture, 'utf8');
+assert(projectOneArchitectureText.includes('users'), 'Project 1 architecture must mention users');
+assert(projectOneArchitectureText.includes('orders'), 'Project 1 architecture must mention orders');
+
+const projectOneMetricDefsText = fs.readFileSync(projectOneMetricDefs, 'utf8');
+for (const metric of ['GMV', '订单数', '客单价', '复购率', '转化率']) {
+  assert(projectOneMetricDefsText.includes(metric), `Project 1 metric definitions must include ${metric}`);
+}
+
+const projectOneAnalysisQueriesText = fs.readFileSync(projectOneAnalysisQueries, 'utf8');
+const queryCount = (projectOneAnalysisQueriesText.match(/^-- Q\d+:/gm) || []).length;
+assert(queryCount >= 20, `Project 1 must have at least 20 analysis queries, found ${queryCount}`);
+
+const projectOneExplainText = fs.readFileSync(projectOneExplainRecords, 'utf8');
+assert(projectOneExplainText.includes('EXPLAIN ANALYZE'), 'Project 1 must include EXPLAIN ANALYZE records');
+
 const projectTwoRoot = path.join(projectRoot, '02-postgres-to-clickhouse');
 const projectTwoMapping = path.join(projectTwoRoot, 'mappings', 'orders-wide-mapping.md');
 const projectTwoSchema = path.join(projectTwoRoot, 'clickhouse', 'schema.sql');
@@ -172,14 +213,33 @@ const projectTwoRunScriptText = fs.readFileSync(projectTwoRunScript, 'utf8');
 assert(projectTwoRunScriptText.includes('ClickHouse client not found'), 'Project 2 run script must distinguish static checks from engine execution');
 assert(projectTwoRunScriptText.includes('Project 2 static checks passed'), 'Project 2 run script must report static check success');
 
+const projectTwoArchitecture = path.join(projectTwoRoot, 'docs', 'architecture.md');
+const projectTwoDetailQueries = path.join(projectTwoRoot, 'queries', 'detail-queries.md');
+const projectTwoReconNotes = path.join(projectTwoRoot, 'docs', 'reconciliation-notes.md');
+const projectTwoPerfComp = path.join(projectTwoRoot, 'docs', 'performance-comparison.md');
+for (const file of [projectTwoArchitecture, projectTwoDetailQueries, projectTwoReconNotes, projectTwoPerfComp]) {
+  assert(fs.existsSync(file), `Missing project 2 artifact: ${file}`);
+}
+assert(fs.readFileSync(projectTwoArchitecture, 'utf8').includes('ClickHouse'), 'Project 2 architecture must mention ClickHouse');
+
 const projectThreeRoot = path.join(projectRoot, '03-cdc-realtime-warehouse');
 const projectThreeEvent = path.join(projectThreeRoot, 'events', 'order-status-changed.json');
 const projectThreeTopics = path.join(projectThreeRoot, 'kafka', 'topics.md');
 const projectThreeFlink = path.join(projectThreeRoot, 'flink', 'realtime-gmv.sql');
 const projectThreeSink = path.join(projectThreeRoot, 'sinks', 'clickhouse-realtime.sql');
 const projectThreeBoundary = path.join(projectThreeRoot, 'docs', 'exactly-once-boundary.md');
+const projectThreeRunScript = path.join(projectThreeRoot, 'run.sh');
+const projectThreeRunRecord = path.join(projectThreeRoot, 'reports', 'run-record-template.md');
 
-for (const file of [projectThreeEvent, projectThreeTopics, projectThreeFlink, projectThreeSink, projectThreeBoundary]) {
+for (const file of [
+  projectThreeEvent,
+  projectThreeTopics,
+  projectThreeFlink,
+  projectThreeSink,
+  projectThreeBoundary,
+  projectThreeRunScript,
+  projectThreeRunRecord
+]) {
   assert(fs.existsSync(file), `Missing project 3 artifact: ${file}`);
 }
 
@@ -204,14 +264,40 @@ assert(projectThreeBoundaryText.includes('Source'), 'Project 3 boundary doc must
 assert(projectThreeBoundaryText.includes('Checkpoint'), 'Project 3 boundary doc must cover Checkpoint');
 assert(projectThreeBoundaryText.includes('Sink'), 'Project 3 boundary doc must cover Sink');
 
+const projectThreeRunScriptText = fs.readFileSync(projectThreeRunScript, 'utf8');
+assert(projectThreeRunScriptText.includes('Project 3 static checks passed'), 'Project 3 run script must report static check success');
+assert(projectThreeRunScriptText.includes('Kafka/Flink/ClickHouse engine execution is not verified'), 'Project 3 run script must preserve runtime boundary');
+
+const projectThreeRunRecordText = fs.readFileSync(projectThreeRunRecord, 'utf8');
+assert(projectThreeRunRecordText.includes('Exactly Once 未覆盖的边界'), 'Project 3 run record must keep exactly-once boundary visible');
+
+const projectThreeArchitecture = path.join(projectThreeRoot, 'docs', 'architecture.md');
+const projectThreeCdcFlow = path.join(projectThreeRoot, 'docs', 'cdc-pseudo-flow.md');
+const projectThreeKafkaExample = path.join(projectThreeRoot, 'docs', 'kafka-consumer-example.md');
+const projectThreeTopicVerif = path.join(projectThreeRoot, 'docs', 'topic-verification.md');
+for (const file of [projectThreeArchitecture, projectThreeCdcFlow, projectThreeKafkaExample, projectThreeTopicVerif]) {
+  assert(fs.existsSync(file), `Missing project 3 artifact: ${file}`);
+}
+assert(fs.readFileSync(projectThreeArchitecture, 'utf8').includes('Kafka'), 'Project 3 architecture must mention Kafka');
+
 const projectFourRoot = path.join(projectRoot, '04-mini-lakehouse');
 const projectFourLayout = path.join(projectFourRoot, 'storage', 'object-layout.md');
 const projectFourIceberg = path.join(projectFourRoot, 'iceberg', 'orders.sql');
 const projectFourTrino = path.join(projectFourRoot, 'trino', 'orders-analysis.sql');
 const projectFourSpark = path.join(projectFourRoot, 'spark', 'build-order-items-wide.sql');
 const projectFourEvolution = path.join(projectFourRoot, 'docs', 'evolution-record.md');
+const projectFourRunScript = path.join(projectFourRoot, 'run.sh');
+const projectFourRunRecord = path.join(projectFourRoot, 'reports', 'run-record-template.md');
 
-for (const file of [projectFourLayout, projectFourIceberg, projectFourTrino, projectFourSpark, projectFourEvolution]) {
+for (const file of [
+  projectFourLayout,
+  projectFourIceberg,
+  projectFourTrino,
+  projectFourSpark,
+  projectFourEvolution,
+  projectFourRunScript,
+  projectFourRunRecord
+]) {
   assert(fs.existsSync(file), `Missing project 4 artifact: ${file}`);
 }
 
@@ -236,6 +322,22 @@ const projectFourEvolutionText = fs.readFileSync(projectFourEvolution, 'utf8');
 assert(projectFourEvolutionText.includes('Schema 演化'), 'Project 4 evolution doc must cover schema evolution');
 assert(projectFourEvolutionText.includes('分区演化'), 'Project 4 evolution doc must cover partition evolution');
 
+const projectFourRunScriptText = fs.readFileSync(projectFourRunScript, 'utf8');
+assert(projectFourRunScriptText.includes('Project 4 static checks passed'), 'Project 4 run script must report static check success');
+assert(projectFourRunScriptText.includes('Spark/Trino/Iceberg engine execution is not verified'), 'Project 4 run script must preserve runtime boundary');
+
+const projectFourRunRecordText = fs.readFileSync(projectFourRunRecord, 'utf8');
+assert(projectFourRunRecordText.includes('本次是否真实运行 Spark/Trino/Iceberg'), 'Project 4 run record must ask for real engine run status');
+
+const projectFourArchitecture = path.join(projectFourRoot, 'docs', 'architecture.md');
+const projectFourExportPseudo = path.join(projectFourRoot, 'docs', 'export-pseudo-code.md');
+const projectFourTrinoResult = path.join(projectFourRoot, 'reports', 'trino-result-template.md');
+const projectFourSparkResult = path.join(projectFourRoot, 'reports', 'spark-result-template.md');
+for (const file of [projectFourArchitecture, projectFourExportPseudo, projectFourTrinoResult, projectFourSparkResult]) {
+  assert(fs.existsSync(file), `Missing project 4 artifact: ${file}`);
+}
+assert(fs.readFileSync(projectFourArchitecture, 'utf8').includes('Iceberg'), 'Project 4 architecture must mention Iceberg');
+
 const projectFiveRoot = path.join(projectRoot, '05-rag-vector-kb');
 const projectFiveSchema = path.join(projectFiveRoot, 'schema', 'pgvector.sql');
 const projectFiveQuery = path.join(projectFiveRoot, 'queries', 'retrieve-with-permission.sql');
@@ -243,8 +345,19 @@ const projectFiveEval = path.join(projectFiveRoot, 'evals', 'rag-eval-sample.jso
 const projectFiveChunking = path.join(projectFiveRoot, 'docs', 'chunking-and-versioning.md');
 const projectFivePermission = path.join(projectFiveRoot, 'docs', 'permission-boundary.md');
 const projectFiveLog = path.join(projectFiveRoot, 'reports', 'retrieval-log-template.md');
+const projectFiveRunScript = path.join(projectFiveRoot, 'run.sh');
+const projectFiveRunRecord = path.join(projectFiveRoot, 'reports', 'run-record-template.md');
 
-for (const file of [projectFiveSchema, projectFiveQuery, projectFiveEval, projectFiveChunking, projectFivePermission, projectFiveLog]) {
+for (const file of [
+  projectFiveSchema,
+  projectFiveQuery,
+  projectFiveEval,
+  projectFiveChunking,
+  projectFivePermission,
+  projectFiveLog,
+  projectFiveRunScript,
+  projectFiveRunRecord
+]) {
   assert(fs.existsSync(file), `Missing project 5 artifact: ${file}`);
 }
 
@@ -271,6 +384,22 @@ const projectFivePermissionText = fs.readFileSync(projectFivePermission, 'utf8')
 assert(projectFivePermissionText.includes('检索前过滤'), 'Project 5 permission doc must cover pre-retrieval filtering');
 assert(projectFivePermissionText.includes('检索后校验'), 'Project 5 permission doc must cover post-retrieval validation');
 
+const projectFiveRunScriptText = fs.readFileSync(projectFiveRunScript, 'utf8');
+assert(projectFiveRunScriptText.includes('Project 5 static checks passed'), 'Project 5 run script must report static check success');
+assert(projectFiveRunScriptText.includes('pgvector and RAG evaluation execution are not verified'), 'Project 5 run script must preserve runtime boundary');
+
+const projectFiveRunRecordText = fs.readFileSync(projectFiveRunRecord, 'utf8');
+assert(projectFiveRunRecordText.includes('本次是否真实执行 pgvector 检索'), 'Project 5 run record must ask for real pgvector execution status');
+assert(projectFiveRunRecordText.includes('本次是否真实执行 RAG 评测'), 'Project 5 run record must ask for real RAG evaluation status');
+
+const projectFiveArchitecture = path.join(projectFiveRoot, 'docs', 'architecture.md');
+const projectFiveParsingRules = path.join(projectFiveRoot, 'docs', 'document-parsing-rules.md');
+const projectFiveEvalResult = path.join(projectFiveRoot, 'reports', 'rag-eval-result-template.md');
+for (const file of [projectFiveArchitecture, projectFiveParsingRules, projectFiveEvalResult]) {
+  assert(fs.existsSync(file), `Missing project 5 artifact: ${file}`);
+}
+assert(fs.readFileSync(projectFiveArchitecture, 'utf8').includes('pgvector'), 'Project 5 architecture must mention pgvector');
+
 const projectSixRoot = path.join(projectRoot, '06-knowledge-graph-graphrag');
 const projectSixOntology = path.join(projectSixRoot, 'ontology', 'entity-relation-types.md');
 const projectSixTriples = path.join(projectSixRoot, 'data', 'triples-sample.jsonl');
@@ -278,8 +407,19 @@ const projectSixNeo4j = path.join(projectSixRoot, 'queries', 'neo4j-paths.cypher
 const projectSixNebula = path.join(projectSixRoot, 'queries', 'nebulagraph-paths.ngql');
 const projectSixContext = path.join(projectSixRoot, 'graphrag', 'context-template.md');
 const projectSixLog = path.join(projectSixRoot, 'reports', 'graph-query-log-template.md');
+const projectSixRunScript = path.join(projectSixRoot, 'run.sh');
+const projectSixRunRecord = path.join(projectSixRoot, 'reports', 'run-record-template.md');
 
-for (const file of [projectSixOntology, projectSixTriples, projectSixNeo4j, projectSixNebula, projectSixContext, projectSixLog]) {
+for (const file of [
+  projectSixOntology,
+  projectSixTriples,
+  projectSixNeo4j,
+  projectSixNebula,
+  projectSixContext,
+  projectSixLog,
+  projectSixRunScript,
+  projectSixRunRecord
+]) {
   assert(fs.existsSync(file), `Missing project 6 artifact: ${file}`);
 }
 
@@ -308,6 +448,22 @@ const projectSixContextText = fs.readFileSync(projectSixContext, 'utf8');
 assert(projectSixContextText.includes('向量召回片段'), 'Project 6 context must combine vector evidence');
 assert(projectSixContextText.includes('图路径证据'), 'Project 6 context must combine graph evidence');
 
+const projectSixRunScriptText = fs.readFileSync(projectSixRunScript, 'utf8');
+assert(projectSixRunScriptText.includes('Project 6 static checks passed'), 'Project 6 run script must report static check success');
+assert(projectSixRunScriptText.includes('Neo4j/NebulaGraph and GraphRAG execution are not verified'), 'Project 6 run script must preserve runtime boundary');
+
+const projectSixRunRecordText = fs.readFileSync(projectSixRunRecord, 'utf8');
+assert(projectSixRunRecordText.includes('本次是否真实执行图数据库路径查询'), 'Project 6 run record must ask for real graph execution status');
+assert(projectSixRunRecordText.includes('本次是否真实执行 GraphRAG 上下文拼接'), 'Project 6 run record must ask for real GraphRAG execution status');
+
+const projectSixArchitecture = path.join(projectSixRoot, 'docs', 'architecture.md');
+const projectSixEvidenceChecklist = path.join(projectSixRoot, 'docs', 'graphrag-evidence-checklist.md');
+const projectSixPathResult = path.join(projectSixRoot, 'reports', 'path-query-result-template.md');
+for (const file of [projectSixArchitecture, projectSixEvidenceChecklist, projectSixPathResult]) {
+  assert(fs.existsSync(file), `Missing project 6 artifact: ${file}`);
+}
+assert(fs.readFileSync(projectSixArchitecture, 'utf8').includes('GraphRAG'), 'Project 6 architecture must mention GraphRAG');
+
 const projectSevenRoot = path.join(projectRoot, '07-governance-mini-platform');
 const projectSevenSchema = path.join(projectSevenRoot, 'schema', 'governance.sql');
 const projectSevenMetrics = path.join(projectSevenRoot, 'catalog', 'metric-dictionary.md');
@@ -315,8 +471,19 @@ const projectSevenLineage = path.join(projectSevenRoot, 'lineage', 'lineage-samp
 const projectSevenQuality = path.join(projectSevenRoot, 'quality', 'rules.sql');
 const projectSevenPolicies = path.join(projectSevenRoot, 'policies', 'access-policies.md');
 const projectSevenAudit = path.join(projectSevenRoot, 'reports', 'governance-audit-template.md');
+const projectSevenRunScript = path.join(projectSevenRoot, 'run.sh');
+const projectSevenRunRecord = path.join(projectSevenRoot, 'reports', 'run-record-template.md');
 
-for (const file of [projectSevenSchema, projectSevenMetrics, projectSevenLineage, projectSevenQuality, projectSevenPolicies, projectSevenAudit]) {
+for (const file of [
+  projectSevenSchema,
+  projectSevenMetrics,
+  projectSevenLineage,
+  projectSevenQuality,
+  projectSevenPolicies,
+  projectSevenAudit,
+  projectSevenRunScript,
+  projectSevenRunRecord
+]) {
   assert(fs.existsSync(file), `Missing project 7 artifact: ${file}`);
 }
 
@@ -343,5 +510,22 @@ const projectSevenPoliciesText = fs.readFileSync(projectSevenPolicies, 'utf8');
 for (const token of ['SQL', '向量', '图', '执行位置', '漏检风险']) {
   assert(projectSevenPoliciesText.includes(token), `Project 7 policies must cover ${token}`);
 }
+
+const projectSevenRunScriptText = fs.readFileSync(projectSevenRunScript, 'utf8');
+assert(projectSevenRunScriptText.includes('Project 7 static checks passed'), 'Project 7 run script must report static check success');
+assert(projectSevenRunScriptText.includes('governance database, quality rule, and policy execution are not verified'), 'Project 7 run script must preserve runtime boundary');
+
+const projectSevenRunRecordText = fs.readFileSync(projectSevenRunRecord, 'utf8');
+assert(projectSevenRunRecordText.includes('本次是否真实执行治理数据库'), 'Project 7 run record must ask for real governance DB execution status');
+assert(projectSevenRunRecordText.includes('本次是否真实执行质量规则'), 'Project 7 run record must ask for real quality execution status');
+assert(projectSevenRunRecordText.includes('本次是否真实执行权限策略测试'), 'Project 7 run record must ask for real policy execution status');
+
+const projectSevenArchitecture = path.join(projectSevenRoot, 'docs', 'architecture.md');
+const projectSevenQualityResult = path.join(projectSevenRoot, 'reports', 'quality-rule-result-template.md');
+const projectSevenPolicyTest = path.join(projectSevenRoot, 'reports', 'policy-test-record-template.md');
+for (const file of [projectSevenArchitecture, projectSevenQualityResult, projectSevenPolicyTest]) {
+  assert(fs.existsSync(file), `Missing project 7 artifact: ${file}`);
+}
+assert(fs.readFileSync(projectSevenArchitecture, 'utf8').includes('治理'), 'Project 7 architecture must mention governance');
 
 console.log('Project workbench structure: ok');

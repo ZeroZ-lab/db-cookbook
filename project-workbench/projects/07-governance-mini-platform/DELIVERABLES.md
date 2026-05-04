@@ -2,9 +2,9 @@
 
 ## 架构产物
 
-- [ ] 画出元数据目录、指标字典、血缘、质量规则、权限策略和 AI 评测的关系。
-- [ ] 标出治理规则进入开发、调度、查询和 AI 应用的位置。
-- [ ] 标出负责人和版本管理位置。
+- [x] 画出元数据目录、指标字典、血缘、质量规则、权限策略和 AI 评测的关系：`docs/architecture.md`。
+- [x] 标出治理规则进入开发、调度、查询和 AI 应用的位置：`docs/architecture.md`。
+- [x] 标出负责人和版本管理位置：`docs/architecture.md`。
 
 ## 数据模型产物
 
@@ -26,8 +26,10 @@
 
 - [x] 指标口径冲突案例：`catalog/metric-dictionary.md`。
 - [x] 血缘追溯案例：`lineage/lineage-sample.json`。
-- [ ] 质量规则运行结果。
-- [ ] 权限策略测试记录。
+- [x] 本地静态运行入口：`run.sh`。
+- [x] 运行记录模板：`reports/run-record-template.md`。
+- [x] 质量规则运行结果模板：`reports/quality-rule-result-template.md`。
+- [x] 权限策略测试记录模板：`reports/policy-test-record-template.md`。
 
 ## 复盘记录
 

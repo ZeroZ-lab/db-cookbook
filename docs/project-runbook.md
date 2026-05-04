@@ -15,13 +15,13 @@
 
 | 项目 | 阶段 | 当前状态 | 阻塞数量 | 交付物数量 |
 | --- | --- | --- | --- | --- |
-| [PostgreSQL 电商数据分析库](../project-workbench/projects/01-postgresql-analytics/README.md) | PostgreSQL 基础与 SQL 分析 | `runtime-entry-present` | 2 | 5 |
-| [PostgreSQL 到 ClickHouse 分析链路](../project-workbench/projects/02-postgres-to-clickhouse/README.md) | OLTP 到 OLAP 分化 | `static-artifacts-verified` | 3 | 10 |
-| [CDC 实时数仓 Demo](../project-workbench/projects/03-cdc-realtime-warehouse/README.md) | CDC 与实时计算 | `static-artifacts-verified` | 4 | 7 |
-| [Mini Lakehouse](../project-workbench/projects/04-mini-lakehouse/README.md) | Lakehouse 架构 | `static-artifacts-verified` | 4 | 7 |
-| [RAG 向量知识库](../project-workbench/projects/05-rag-vector-kb/README.md) | AI 时代数据基础设施 | `static-artifacts-verified` | 3 | 8 |
-| [知识图谱与 GraphRAG](../project-workbench/projects/06-knowledge-graph-graphrag/README.md) | 图数据库与 GraphRAG | `static-artifacts-verified` | 3 | 8 |
-| [数据治理 Mini Platform](../project-workbench/projects/07-governance-mini-platform/README.md) | 治理、血缘、质量与信任 | `static-artifacts-verified` | 3 | 8 |
+| [PostgreSQL 电商数据分析库](../project-workbench/projects/01-postgresql-analytics/README.md) | PostgreSQL 基础与 SQL 分析 | `runtime-entry-present` | 2 | 14 |
+| [PostgreSQL 到 ClickHouse 分析链路](../project-workbench/projects/02-postgres-to-clickhouse/README.md) | OLTP 到 OLAP 分化 | `static-artifacts-verified` | 3 | 14 |
+| [CDC 实时数仓 Demo](../project-workbench/projects/03-cdc-realtime-warehouse/README.md) | CDC 与实时计算 | `static-artifacts-verified` | 4 | 13 |
+| [Mini Lakehouse](../project-workbench/projects/04-mini-lakehouse/README.md) | Lakehouse 架构 | `static-artifacts-verified` | 4 | 13 |
+| [RAG 向量知识库](../project-workbench/projects/05-rag-vector-kb/README.md) | AI 时代数据基础设施 | `static-artifacts-verified` | 3 | 13 |
+| [知识图谱与 GraphRAG](../project-workbench/projects/06-knowledge-graph-graphrag/README.md) | 图数据库与 GraphRAG | `static-artifacts-verified` | 3 | 13 |
+| [数据治理 Mini Platform](../project-workbench/projects/07-governance-mini-platform/README.md) | 治理、血缘、质量与信任 | `static-artifacts-verified` | 3 | 13 |
 
 ## 逐项目执行卡
 
@@ -44,6 +44,15 @@
 - [run.sh](../project-workbench/projects/01-postgresql-analytics/run.sh)
 - [docker-compose.yml](../project-workbench/projects/01-postgresql-analytics/docker-compose.yml)
 - [reports/run-record-template.md](../project-workbench/projects/01-postgresql-analytics/reports/run-record-template.md)
+- [docs/architecture.md](../project-workbench/projects/01-postgresql-analytics/docs/architecture.md)
+- [docs/business-fact-relationship.md](../project-workbench/projects/01-postgresql-analytics/docs/business-fact-relationship.md)
+- [docs/metric-definitions.md](../project-workbench/projects/01-postgresql-analytics/docs/metric-definitions.md)
+- [docs/query-categories.md](../project-workbench/projects/01-postgresql-analytics/docs/query-categories.md)
+- [docs/ddl-source.md](../project-workbench/projects/01-postgresql-analytics/docs/ddl-source.md)
+- [docs/index-optimization.md](../project-workbench/projects/01-postgresql-analytics/docs/index-optimization.md)
+- [docs/partition-materialized-views.md](../project-workbench/projects/01-postgresql-analytics/docs/partition-materialized-views.md)
+- [queries/analysis-queries.sql](../project-workbench/projects/01-postgresql-analytics/queries/analysis-queries.sql)
+- [queries/explain-records.sql](../project-workbench/projects/01-postgresql-analytics/queries/explain-records.sql)
 
 ### 02-postgres-to-clickhouse PostgreSQL 到 ClickHouse 分析链路
 
@@ -66,8 +75,12 @@
 - [mappings/orders-wide-mapping.md](../project-workbench/projects/02-postgres-to-clickhouse/mappings/orders-wide-mapping.md)
 - [clickhouse/schema.sql](../project-workbench/projects/02-postgres-to-clickhouse/clickhouse/schema.sql)
 - [queries/daily-gmv.sql](../project-workbench/projects/02-postgres-to-clickhouse/queries/daily-gmv.sql)
+- [queries/detail-queries.md](../project-workbench/projects/02-postgres-to-clickhouse/queries/detail-queries.md)
 - [docs/table-design-notes.md](../project-workbench/projects/02-postgres-to-clickhouse/docs/table-design-notes.md)
 - [docs/sync-strategy.md](../project-workbench/projects/02-postgres-to-clickhouse/docs/sync-strategy.md)
+- [docs/architecture.md](../project-workbench/projects/02-postgres-to-clickhouse/docs/architecture.md)
+- [docs/reconciliation-notes.md](../project-workbench/projects/02-postgres-to-clickhouse/docs/reconciliation-notes.md)
+- [docs/performance-comparison.md](../project-workbench/projects/02-postgres-to-clickhouse/docs/performance-comparison.md)
 - [reports/reconciliation-template.md](../project-workbench/projects/02-postgres-to-clickhouse/reports/reconciliation-template.md)
 - [reports/run-record-template.md](../project-workbench/projects/02-postgres-to-clickhouse/reports/run-record-template.md)
 
@@ -89,11 +102,17 @@
 
 - [README.md](../project-workbench/projects/03-cdc-realtime-warehouse/README.md)
 - [DELIVERABLES.md](../project-workbench/projects/03-cdc-realtime-warehouse/DELIVERABLES.md)
+- [run.sh](../project-workbench/projects/03-cdc-realtime-warehouse/run.sh)
 - [events/order-status-changed.json](../project-workbench/projects/03-cdc-realtime-warehouse/events/order-status-changed.json)
 - [kafka/topics.md](../project-workbench/projects/03-cdc-realtime-warehouse/kafka/topics.md)
 - [flink/realtime-gmv.sql](../project-workbench/projects/03-cdc-realtime-warehouse/flink/realtime-gmv.sql)
 - [sinks/clickhouse-realtime.sql](../project-workbench/projects/03-cdc-realtime-warehouse/sinks/clickhouse-realtime.sql)
 - [docs/exactly-once-boundary.md](../project-workbench/projects/03-cdc-realtime-warehouse/docs/exactly-once-boundary.md)
+- [docs/architecture.md](../project-workbench/projects/03-cdc-realtime-warehouse/docs/architecture.md)
+- [docs/cdc-pseudo-flow.md](../project-workbench/projects/03-cdc-realtime-warehouse/docs/cdc-pseudo-flow.md)
+- [docs/kafka-consumer-example.md](../project-workbench/projects/03-cdc-realtime-warehouse/docs/kafka-consumer-example.md)
+- [docs/topic-verification.md](../project-workbench/projects/03-cdc-realtime-warehouse/docs/topic-verification.md)
+- [reports/run-record-template.md](../project-workbench/projects/03-cdc-realtime-warehouse/reports/run-record-template.md)
 
 ### 04-mini-lakehouse Mini Lakehouse
 
@@ -113,11 +132,17 @@
 
 - [README.md](../project-workbench/projects/04-mini-lakehouse/README.md)
 - [DELIVERABLES.md](../project-workbench/projects/04-mini-lakehouse/DELIVERABLES.md)
+- [run.sh](../project-workbench/projects/04-mini-lakehouse/run.sh)
 - [storage/object-layout.md](../project-workbench/projects/04-mini-lakehouse/storage/object-layout.md)
 - [iceberg/orders.sql](../project-workbench/projects/04-mini-lakehouse/iceberg/orders.sql)
 - [trino/orders-analysis.sql](../project-workbench/projects/04-mini-lakehouse/trino/orders-analysis.sql)
 - [spark/build-order-items-wide.sql](../project-workbench/projects/04-mini-lakehouse/spark/build-order-items-wide.sql)
 - [docs/evolution-record.md](../project-workbench/projects/04-mini-lakehouse/docs/evolution-record.md)
+- [docs/architecture.md](../project-workbench/projects/04-mini-lakehouse/docs/architecture.md)
+- [docs/export-pseudo-code.md](../project-workbench/projects/04-mini-lakehouse/docs/export-pseudo-code.md)
+- [reports/run-record-template.md](../project-workbench/projects/04-mini-lakehouse/reports/run-record-template.md)
+- [reports/trino-result-template.md](../project-workbench/projects/04-mini-lakehouse/reports/trino-result-template.md)
+- [reports/spark-result-template.md](../project-workbench/projects/04-mini-lakehouse/reports/spark-result-template.md)
 
 ### 05-rag-vector-kb RAG 向量知识库
 
@@ -136,12 +161,17 @@
 
 - [README.md](../project-workbench/projects/05-rag-vector-kb/README.md)
 - [DELIVERABLES.md](../project-workbench/projects/05-rag-vector-kb/DELIVERABLES.md)
+- [run.sh](../project-workbench/projects/05-rag-vector-kb/run.sh)
 - [schema/pgvector.sql](../project-workbench/projects/05-rag-vector-kb/schema/pgvector.sql)
 - [queries/retrieve-with-permission.sql](../project-workbench/projects/05-rag-vector-kb/queries/retrieve-with-permission.sql)
 - [evals/rag-eval-sample.json](../project-workbench/projects/05-rag-vector-kb/evals/rag-eval-sample.json)
 - [docs/chunking-and-versioning.md](../project-workbench/projects/05-rag-vector-kb/docs/chunking-and-versioning.md)
 - [docs/permission-boundary.md](../project-workbench/projects/05-rag-vector-kb/docs/permission-boundary.md)
+- [docs/architecture.md](../project-workbench/projects/05-rag-vector-kb/docs/architecture.md)
+- [docs/document-parsing-rules.md](../project-workbench/projects/05-rag-vector-kb/docs/document-parsing-rules.md)
 - [reports/retrieval-log-template.md](../project-workbench/projects/05-rag-vector-kb/reports/retrieval-log-template.md)
+- [reports/run-record-template.md](../project-workbench/projects/05-rag-vector-kb/reports/run-record-template.md)
+- [reports/rag-eval-result-template.md](../project-workbench/projects/05-rag-vector-kb/reports/rag-eval-result-template.md)
 
 ### 06-knowledge-graph-graphrag 知识图谱与 GraphRAG
 
@@ -160,12 +190,17 @@
 
 - [README.md](../project-workbench/projects/06-knowledge-graph-graphrag/README.md)
 - [DELIVERABLES.md](../project-workbench/projects/06-knowledge-graph-graphrag/DELIVERABLES.md)
+- [run.sh](../project-workbench/projects/06-knowledge-graph-graphrag/run.sh)
 - [ontology/entity-relation-types.md](../project-workbench/projects/06-knowledge-graph-graphrag/ontology/entity-relation-types.md)
 - [data/triples-sample.jsonl](../project-workbench/projects/06-knowledge-graph-graphrag/data/triples-sample.jsonl)
 - [queries/neo4j-paths.cypher](../project-workbench/projects/06-knowledge-graph-graphrag/queries/neo4j-paths.cypher)
 - [queries/nebulagraph-paths.ngql](../project-workbench/projects/06-knowledge-graph-graphrag/queries/nebulagraph-paths.ngql)
 - [graphrag/context-template.md](../project-workbench/projects/06-knowledge-graph-graphrag/graphrag/context-template.md)
+- [docs/architecture.md](../project-workbench/projects/06-knowledge-graph-graphrag/docs/architecture.md)
+- [docs/graphrag-evidence-checklist.md](../project-workbench/projects/06-knowledge-graph-graphrag/docs/graphrag-evidence-checklist.md)
 - [reports/graph-query-log-template.md](../project-workbench/projects/06-knowledge-graph-graphrag/reports/graph-query-log-template.md)
+- [reports/run-record-template.md](../project-workbench/projects/06-knowledge-graph-graphrag/reports/run-record-template.md)
+- [reports/path-query-result-template.md](../project-workbench/projects/06-knowledge-graph-graphrag/reports/path-query-result-template.md)
 
 ### 07-governance-mini-platform 数据治理 Mini Platform
 
@@ -184,12 +219,17 @@
 
 - [README.md](../project-workbench/projects/07-governance-mini-platform/README.md)
 - [DELIVERABLES.md](../project-workbench/projects/07-governance-mini-platform/DELIVERABLES.md)
+- [run.sh](../project-workbench/projects/07-governance-mini-platform/run.sh)
 - [schema/governance.sql](../project-workbench/projects/07-governance-mini-platform/schema/governance.sql)
 - [catalog/metric-dictionary.md](../project-workbench/projects/07-governance-mini-platform/catalog/metric-dictionary.md)
 - [lineage/lineage-sample.json](../project-workbench/projects/07-governance-mini-platform/lineage/lineage-sample.json)
 - [quality/rules.sql](../project-workbench/projects/07-governance-mini-platform/quality/rules.sql)
 - [policies/access-policies.md](../project-workbench/projects/07-governance-mini-platform/policies/access-policies.md)
+- [docs/architecture.md](../project-workbench/projects/07-governance-mini-platform/docs/architecture.md)
 - [reports/governance-audit-template.md](../project-workbench/projects/07-governance-mini-platform/reports/governance-audit-template.md)
+- [reports/run-record-template.md](../project-workbench/projects/07-governance-mini-platform/reports/run-record-template.md)
+- [reports/quality-rule-result-template.md](../project-workbench/projects/07-governance-mini-platform/reports/quality-rule-result-template.md)
+- [reports/policy-test-record-template.md](../project-workbench/projects/07-governance-mini-platform/reports/policy-test-record-template.md)
 
 ## 验证命令
 
