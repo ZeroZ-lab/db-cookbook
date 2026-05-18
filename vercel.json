@@ -1,5 +1,19 @@
 {
   "buildCommand": "pnpm docs:build",
   "outputDirectory": "site/.vitepress/dist",
-  "installCommand": "pnpm install"
+  "installCommand": "pnpm install",
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/images/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "max-age=86400" }
+      ]
+    }
+  ]
 }

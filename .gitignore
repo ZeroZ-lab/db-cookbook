@@ -4,8 +4,3 @@ dist/
 *.log
 .vercel
 .playwright-mcp/
-node_modules/
-dist/
-.DS_Store
-.playwright-mcp/
-*.log
