@@ -1,6 +1,10 @@
 node_modules/
 dist/
+site/.vitepress/dist/
+site/.vitepress/cache/
 .DS_Store
 *.log
 .vercel
 .playwright-mcp/
+.claude/
+*.png

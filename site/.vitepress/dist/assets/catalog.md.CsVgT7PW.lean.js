@@ -1,1 +1,0 @@
-import{_ as a,o as r,c as e,ag as d}from"./chunks/framework.CAXxHpAX.js";const g=JSON.parse('{"title":"全书目录","description":"","frontmatter":{},"headers":[],"relativePath":"catalog.md","filePath":"catalog.md"}'),s={name:"catalog.md"};function o(h,t,l,i,n,c){return r(),e("div",null,[...t[0]||(t[0]=[d("",9)])])}const f=a(s,[["render",o]]);export{g as __pageData,f as default};
