@@ -1,25 +1,47 @@
-### 12.11 数据湖实战案例
+### 12.11 湖仓实战案例
 
-前面学习了数据湖常见问题，了解了常见问题的排查和解决方法。
+一个中型电商平台的订单数据面临三个现实问题：第一，PostgreSQL 业务库承载五年订单明细（约 5000 万条），查询月度 GMV 时扫描时间超过 30 秒，业务库的在线查询受到影响。第二，数据团队用 Hive + HDFS 做月度汇总，但 Hive 表的分区固定按月划分，无法调整到日粒度，schema 变化后下游 Spark 任务频繁报列不匹配错误。第三，BI 团队需要最近 7 天的 GMV 交互查询，但 HDFS 上的数据只能通过 Spark 批处理读取，交互式查询需要先导出 CSV 再导入 BI 工具，全链路延迟超过 1 小时。
 
-如何通过实际案例深入理解数据湖的应用？如何设计完整的数据湖系统？如何解决实际问题？
+团队决定构建 Mini Lakehouse：PostgreSQL → CDC → MinIO → Parquet → Iceberg → Spark + Trino + Flink。这个案例不是展示"湖仓有多先进"，而是展示每一步解决了什么问题、引入了什么代价、在哪里需要额外的系统补充。
 
-**场景**：
-```yaml
-实战案例：
+**第一步：数据同步入湖。** PostgreSQL 的 orders、order_items、users、products 四张核心表通过 Airbyte 批量同步到 MinIO 对象存储。同步产出的文件是 Parquet 格式——Airbyte 的 S3/Parquet 目标连接器使用 Java 库（Apache Avro + Parquet Java）将 CDC 记录直接转换为列式文件，不依赖 Spark。这一步解决的是"历史明细从业务库卸载到低成本存储"的问题——PostgreSQL 不再承载五年历史数据的查询压力，MinIO 的存储成本远低于 PostgreSQL 的存储扩展。代价：Airbyte 同步有延迟（批量同步每天一次），当天的新增数据不会立即出现在湖仓表中——这个延迟对月度汇总不敏感，但对实时 GMV 看板不可接受。实时入湖需要第二步的 Flink CDC 流式写入。
 
-新人："学了理论，需要看案例"
+**第二步：Iceberg 表格式组织。** 同步到 MinIO 的 Parquet 文件通过 Iceberg 表格式组织为表。以 `order_items` 表为例：
 
-架构师："这些案例有帮助"
-
-资深工程师："从案例中学习"
+```text
+表：lakehouse.order_items
+格式：Iceberg v2
+文件：Parquet，目标 256MB-512MB
+分区：days(paid_at)，隐藏分区
+排序：paid_at, order_id
+Catalog：Hive Metastore（Spark/Trino/Flink 共用同一实例）
+写入：Airbyte 批量同步历史数据 → Spark 做数据清洗和宽表构建
+       Flink CDC 流式写入当天新增数据（分钟级）
+查询：Spark 做月度汇总（扫描全量分区）
+       Trino 做 7 天 GMV 交互查询（只扫描最近 7 个分区）
+       DuckDB 在本地做数据抽样和 schema 验证
 ```
 
-**问题**：
-- 数据湖有哪些典型应用案例？
-- 如何设计完整的数据湖系统？
-- 如何解决实际业务问题？
-- 如何评估系统效果？
-- 有哪些成功经验？
+Iceberg 解决了 Hive 的三个痛点：隐藏分区使得分区演化不需要重建数据——从 days(paid_at) 改为 hours(paid_at) 只需修改 partition spec，新写入按小时分区，旧数据保持日分区，Trino 查询自动适配；schema 演化使得新增 is_refunded 字段不需要重建表——Iceberg 的 schema 演化通过 metadata json 记录每个版本的 schema，旧数据缺少新字段时查询引擎自动填充 null 值；快照使得错误写入可以回滚——Spark 任务写入失败后不会影响下游查询，回滚只需要将 Catalog 指针指向之前的快照。
 
-**答案**：**通过分析企业数据仓库现代化、日志分析平台、实时分析平台等行业的数据湖实战案例，深入理解数据湖系统的设计方法、技术选型、实施策略和运维管理，掌握从零构建数据湖系统的能力**
+代价：Iceberg 的元数据管理需要运维——Flink 分钟级写入每天产生数百个快照和小文件，必须每小时执行 compaction 合并小文件到目标大小，每天执行快照清理保留最近 7 天快照，每周执行孤儿文件清理释放 S3 存储空间。这些运维流程不是可选的——没有 compaction 的 Iceberg 表在 3 个月后查询性能退化到不可用状态。
+
+**第三步：多引擎查询协作。** Spark 扫描全量 365 天分区计算月度 GMV 和品类复购率——这是批处理的合理延迟（20 分钟），不需要秒级响应。Trino 查询最近 7 天分区计算 GMV 趋势——只扫描 7 个分区约 50 个 Parquet 文件，响应时间 3 秒，满足 BI 交互查询要求。Flink CDC 每分钟写入最新订单数据——下游 Trino 查询读到的是 Flink 最近一次 checkpoint 提交的完整快照，不会看到写入过程中的半成品。DuckDB 在本地读取一个分区的 Parquet 文件做数据抽样——数据工程师在笔记本上验证 schema 和分布，不需要连接 Trino 服务。
+
+多引擎协作的关键约束是 Catalog 唯一性——Spark、Trino、Flink 全部指向同一个 Hive Metastore 实例。如果 Spark 用 Hive Metastore、Trino 用 Glue Catalog，两者的快照指针可能不同步，查询结果不一致。这不是"推荐做法"，而是"不这么做就会出问题"的硬约束。
+
+**第四步：OLAP 服务层补充。** Trino 查询 Iceberg 表的交互式延迟在 3 秒级别——满足 BI 交互查询但不满足毫秒级实时看板的要求。业务团队需要一个亚秒级响应的 GMV 实时看板，这需要 ClickHouse 或 Doris 作为 OLAP 服务层。方案是：从 Iceberg 的 orders 和 order_items 表构建 GMV 汇总宽表，每天同步到 ClickHouse——ClickHouse 的预聚合和排序索引保证亚秒级查询响应。
+
+**核心判断：湖仓案例展示的不是"一个系统替代所有系统"，而是"开放存储底座 + 计算引擎组合 + OLAP 服务层"的三层协作。湖仓不替代 PostgreSQL 的业务事务，不替代 ClickHouse 的低延迟查询，不替代 Spark 的批处理能力——它提供的是让这些系统的数据沉淀在开放存储上的统一组织方式。**
+
+数据分层设计：
+
+```text
+lake/
+  raw/           Airbyte 同步落地数据（保留原始 schema）
+  silver/        清洗后的标准明细表（Iceberg 分区 + 排序）
+  gold/          GMV 汇总和品类复购率宽表（同步到 ClickHouse 服务层）
+  ai/            推荐模型的训练数据集版本（ Iceberg 快照管理版本）
+```
+
+从系统连接看，第 7 章批处理的 Spark 产物写入 silver 层，第 8 章流处理的 Flink CDC 写入 silver 层的最新分区，第 9 章 OLAP 的 ClickHouse 从 gold 层同步数据——湖仓是这些系统的共同存储底座，不是替代品。

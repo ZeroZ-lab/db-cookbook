@@ -1,25 +1,25 @@
 ### 11.3 图查询语言
 
-前面学习了图数据模型，了解了如何用图表示数据。
+SQL 查询的是"符合条件的行"，图查询语言遍历的是"符合条件的路径"。这个根本差异决定了查询语言的机制设计：SQL 的核心操作是过滤和聚合，图查询的核心操作是模式匹配和路径扩展。
 
-如何查询图数据？有哪些图查询语言？如何表达图遍历？如何进行图分析？
+**图查询 ≠ SQL + JOIN。** 一个3跳路径查询——"客户A通过共享手机号关联的客户B，B购买的商品C属于哪个供应商"——在SQL中是三次JOIN加上子查询，路径长度不确定时还要用递归CTE。在Cypher中它是一个MATCH模式：
 
-**场景**：
-```yaml
-图查询需求：
-
-数据分析师："要查询用户的朋友的朋友"
-
-架构师："需要图查询语言"
-
-新工程师："如何查询图数据？"
+```cypher
+MATCH (a:客户 {user_id: 'A001'})
+      -[:SHARED_PHONE]->(b:客户)
+      -[:PURCHASED]->(c:商品)
+      -[:SUPPLIED_BY]->(s:供应商)
+RETURN a.name, b.name, c.name, s.name, s.risk_level;
 ```
 
-**问题**：
-- 图查询与传统查询有什么区别？
-- 有哪些图查询语言？
-- 如何表达图遍历？
-- 如何进行模式匹配？
-- 如何进行图分析？
+这条查询的执行机制是：从起点节点a出发，沿SHARED_PHONE边遍历到相邻客户节点b，再沿PURCHASED边走到商品节点c，最后沿SUPPLIED_BY边到达供应商s。每一步的遍历开销是O(邻接边数)，而非O(全表扫描)。这是图查询语言的核心优势——路径遍历是本地操作，不需要全局JOIN。
 
-**答案**：**图查询语言专门用于查询图数据，支持图遍历、模式匹配、路径查询、图分析等操作，主流的图查询语言包括Cypher、Gremlin、GQL、SPARQL等，需要根据图数据库选择合适的查询语言**
+Cypher 是 Neo4j 的声明式图查询语言，也是图查询的事实标准。它的核心机制是 pattern matching——你描述要匹配的节点-边-节点模式，引擎决定遍历策略。Cypher 的可变长度路径语法 `(a)-[:KNOWS*1..3]->(b)` 表达"1到3跳的朋友关系"，这是递归路径的简洁表达，SQL中没有对应语法。Cypher 的限制是：它只运行在Neo4j和兼容openCypher的引擎上（如NebulaGraph部分兼容），跨平台可移植性不如Gremlin。
+
+Gremlin 是 Apache TinkerPop 的遍历式图查询语言，运行在JanusGraph、Amazon Neptune等支持TinkerPop的图数据库上。Gremlin 的机制是遍历步骤链——`g.V(a).out('KNOWS').out('KNOWS').out('PURCHASED')` 是一步步沿边走，每步返回中间结果集给下一步。与Cypher的区别：Cypher描述"你要什么模式"，Gremlin描述"你怎么一步步走到那里"。Gremlin更灵活也更复杂——同一个查询在Gremlin中的写法可以有多种，性能差异很大，这是它的代价：查询优化更多依赖开发者而非引擎。
+
+nGQL 是 NebulaGraph 的原生查询语言，语法接近Cypher但面向分布式执行设计。nGQL 的 `GO FROM` 语句是典型的遍历式查询——`GO 1 TO 3 STEPS FROM "A001" OVER shared_phone, purchased YIELD shared_phone._dst, purchased._dst`——它显式指定步数和边类型，引擎在分布式存储层协调多分片遍历。NebulaGraph v3.x 也支持 openCypher 的 MATCH 语法，可以写成 `MATCH (src:客户)-[e1:shared_phone]->(mid:客户)-[e2:purchased]->(dst:商品) WHERE id(src) == "A001" RETURN mid.name, dst.name`——MATCH 语法更适合多跳复杂路径查询。nGQL 不等于 Cypher 的分布式版——它的执行计划需要考虑数据分片位置和网络开销，这是NebulaGraph存算分离架构带来的查询机制差异。
+
+**图查询语言的代价和失效条件：** 图查询语言的优势在多跳路径和模式匹配，但它在聚合统计上不如SQL。例如"统计每个供应商的商品数量和平均价格"，在Neo4j中需要先MATCH再聚合，性能不如PostgreSQL直接GROUP BY。图查询语言的另一个失效条件是：当图的密度极高（每个节点连接数千条边），遍历操作会在中间步骤膨胀结果集，导致查询超时——这是图遍历的"扇出爆炸"问题，不是查询语言本身能解决的，需要索引和查询优化配合（下一两节会展开）。
+
+图查询语言的选择和图数据库绑定——你选Neo4j就用Cypher，选NebulaGraph就用nGQL或兼容Cypher，选JanusGraph就用Gremlin。语言选择不是独立决策，而是数据库选型的一部分。下一节进入Neo4j实战，用具体的电商反欺诈Cypher查询展示这些机制如何落地。

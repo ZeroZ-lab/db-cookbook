@@ -1,0 +1,151 @@
+{
+  "id": "m1-postgresql",
+  "title": "M1: 一张表的故事",
+  "subtitle": "你的 orders 表里有 100 万条订单。一条 SELECT * FROM orders WHERE user_id = 42 要多久？为什么？",
+  "layout": "horizontal",
+  "nodes": [
+    {
+      "id": "pg-orders",
+      "label": "PostgreSQL",
+      "icon": "🐘",
+      "x": 80,
+      "y": 160,
+      "width": 140,
+      "height": 64,
+      "detail": "解决：结构化数据的存储、查询和事务\n不解决：海量数据的分布式分析\n关键：WAL、MVCC、B-tree、分区",
+      "color": "#3b82f6",
+      "relatedChapter": "第 1 章"
+    },
+    {
+      "id": "query-engine",
+      "label": "查询引擎",
+      "icon": "⚙️",
+      "x": 300,
+      "y": 160,
+      "width": 120,
+      "height": 56,
+      "detail": "解决：SQL 解析、优化和执行计划生成\n不解决：数据存储本身\n关键：Parser → Planner → Executor",
+      "color": "#3b82f6",
+      "relatedChapter": "第 2 章"
+    },
+    {
+      "id": "result-set",
+      "label": "结果集",
+      "icon": "📊",
+      "x": 540,
+      "y": 160,
+      "width": 120,
+      "height": 56,
+      "detail": "解决：将查询结果返回给客户端\n不解决：结果的进一步处理\n关键：网络协议、游标、分页",
+      "color": "#3b82f6",
+      "relatedChapter": "第 2 章"
+    },
+    {
+      "id": "btree-index",
+      "label": "B-tree 索引",
+      "icon": "🌲",
+      "x": 200,
+      "y": 40,
+      "width": 120,
+      "height": 56,
+      "detail": "解决：把 O(n) 查询变成 O(log n)\n不解决：写入时的维护代价\n关键：B-tree 页分裂、填充因子、膨胀",
+      "color": "#3b82f6",
+      "relatedChapter": "第 3 章"
+    },
+    {
+      "id": "partition",
+      "label": "分区表",
+      "icon": "📁",
+      "x": 300,
+      "y": 300,
+      "width": 120,
+      "height": 56,
+      "detail": "解决：大表查询只扫描相关分区\n不解决：分区键选错比不分区更慢\n关键：范围分区、列表分区、分区裁剪",
+      "color": "#3b82f6",
+      "relatedChapter": "第 3 章"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-scan",
+      "from": "pg-orders",
+      "to": "query-engine",
+      "label": "全表扫描",
+      "color": "#94a3b8",
+      "animated": true
+    },
+    {
+      "id": "e-filter",
+      "from": "query-engine",
+      "to": "result-set",
+      "label": "过滤返回",
+      "color": "#94a3b8",
+      "animated": false
+    },
+    {
+      "id": "e-index-lookup",
+      "from": "btree-index",
+      "to": "query-engine",
+      "label": "索引查找",
+      "color": "#3b82f6",
+      "animated": true
+    },
+    {
+      "id": "e-partition-route",
+      "from": "partition",
+      "to": "query-engine",
+      "label": "分区裁剪",
+      "color": "#3b82f6",
+      "animated": true
+    }
+  ],
+  "steps": [
+    {
+      "title": "步骤 1/5：表结构设计",
+      "showNodes": ["pg-orders"],
+      "showEdges": [],
+      "highlightNodes": ["pg-orders"],
+      "highlightEdges": [],
+      "explanation": "一行代表什么？一笔订单。主键标识唯一性，外键保证引用完整性。\n为什么不能在应用层检查？因为并发下应用层检查不可靠——数据库的约束是原子的。",
+      "mechanismFocus": "表结构设计为什么从约束开始，而不是从 SQL 开始？"
+    },
+    {
+      "title": "步骤 2/5：全表扫描",
+      "showNodes": ["query-engine", "result-set"],
+      "showEdges": ["e-scan", "e-filter"],
+      "highlightNodes": ["query-engine"],
+      "highlightEdges": ["e-scan"],
+      "explanation": "没有索引时，数据库逐行检查 100 万行找到 user_id=42。\n这就是 O(n) 的全表扫描。数据量翻倍，查询时间也翻倍。",
+      "mechanismFocus": "全表扫描的代价是 O(n)——为什么这不是数据库的 bug，而是设计选择？"
+    },
+    {
+      "title": "步骤 3/5：B-tree 索引加速",
+      "showNodes": ["btree-index"],
+      "showEdges": ["e-index-lookup"],
+      "highlightNodes": ["btree-index"],
+      "highlightEdges": ["e-index-lookup"],
+      "explanation": "B-tree 把 O(n) 变成 O(log n)。100 万行数据只需约 20 次比较。\n但索引不是免费的——每次 INSERT/UPDATE 都要维护 B-tree。\n索引越多，写入越慢。",
+      "mechanismFocus": "为什么索引加速查询但有写入代价？什么时候不应该加索引？"
+    },
+    {
+      "title": "步骤 4/5：窗口函数",
+      "showNodes": [],
+      "showEdges": [],
+      "highlightNodes": ["pg-orders", "result-set"],
+      "highlightEdges": ["e-filter"],
+      "explanation": "\"每个用户的消费排名\"不用 GROUP BY，而用窗口函数：\nRANK() OVER (PARTITION BY user_id ORDER BY amount DESC)\n窗口函数不折叠行——每行都有排名，但可以计算聚合。",
+      "mechanismFocus": "窗口函数和 GROUP BY 的本质区别是什么？"
+    },
+    {
+      "title": "步骤 5/5：大表分区",
+      "showNodes": ["partition"],
+      "showEdges": ["e-partition-route"],
+      "highlightNodes": ["partition"],
+      "highlightEdges": ["e-partition-route"],
+      "explanation": "1000 万行时，按时间分区让查询只扫描相关分区。\n但分区键选错了比不分区更慢——因为查询要扫所有分区。\n分区是手段，不是目的。",
+      "mechanismFocus": "什么时候应该分区？分区键的选择标准是什么？"
+    }
+  ],
+  "validationQuestion": "能解释\"为什么索引加速查询但有写入代价\"、\"什么时候应该分区\"吗？",
+  "nextMilestone": "m2-warehouse"
+}

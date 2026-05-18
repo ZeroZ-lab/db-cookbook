@@ -539,6 +539,39 @@ function sanitizeYaml(str) {
   return str.replace(/["""'"'""]/g, '').replace(/\n/g, ' ').trim();
 }
 
+// Interactive component embedding: map chapter.section -> component tag
+const interactiveEmbeds = {
+  '2': '::: tip 动手试试\n在下方沙盒中执行 SQL 查询，体验 SELECT、JOIN、窗口函数等操作。\n:::\n\n<SqlSandbox />\n',
+  '6.5': '\n<EtlPipeline />\n',
+  '8.3': '\n<StreamSimulator />\n',
+  '10.3': '\n<VectorSearch />\n',
+};
+
+function getInteractiveEmbed(chapterNum, sectionNum) {
+  // Check section-specific embed first
+  const sectionKey = `${chapterNum}.${sectionNum}`;
+  if (interactiveEmbeds[sectionKey]) return interactiveEmbeds[sectionKey];
+  // Check chapter-level embed (only on last section of the chapter)
+  if (interactiveEmbeds[String(chapterNum)] && sectionNum === getLastSectionNum(chapterNum)) {
+    return interactiveEmbeds[String(chapterNum)];
+  }
+  return '';
+}
+
+// Cache for last section numbers
+const lastSectionCache = new Map();
+function getLastSectionNum(chapterNum) {
+  if (lastSectionCache.has(chapterNum)) return lastSectionCache.get(chapterNum);
+  const padded = String(chapterNum).padStart(2, '0');
+  let last = 1;
+  for (let i = 20; i >= 1; i--) {
+    const file = path.join(root, 'manuscript', `chapter-${padded}-section-${i}-complete.md`);
+    if (fs.existsSync(file)) { last = i; break; }
+  }
+  lastSectionCache.set(chapterNum, last);
+  return last;
+}
+
 function generateSectionPage(chapter, section, prevRef, nextRef) {
   const padded = String(chapter.chapter).padStart(2, '0');
   const fullTitle = sanitizeYaml(`${padded}.${section.num} ${section.title}`);
@@ -559,7 +592,8 @@ function generateSectionPage(chapter, section, prevRef, nextRef) {
     ''
   ].join('\n');
 
-  return `${fm}${section.content}\n`;
+  const embed = getInteractiveEmbed(chapter.chapter, section.num);
+  return `${fm}${section.content}\n${embed}`;
 }
 
 function createIndex() {

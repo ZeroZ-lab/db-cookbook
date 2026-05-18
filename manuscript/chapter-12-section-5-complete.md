@@ -1,25 +1,23 @@
-### 12.5 数据湖查询与分析
+### 12.5 Catalog 与元数据管理
 
-前面学习了数据湖ETL与数据处理，了解了如何在数据湖中进行ETL。
+一个电商平台的订单数据写入 Iceberg 表后，Spark 批处理任务看到这张表有 365 天的分区数据，Trino 交互查询看到这张表只有昨天的数据，Flink 流式写入任务看到这张表的 schema 缺少昨天新增的 is_refunded 字段。三个引擎读的是同一批 Parquet 文件，但看到的表定义不一致——这不是表格式的问题，而是 Catalog 的问题。没有 Catalog 的湖仓就像一个没有目录索引的图书馆——书都摆在那里，但读者找不到自己需要的书在哪一排哪一层。
 
-如何在数据湖中查询数据？如何加速查询？如何与BI工具集成？有哪些优化策略？
+**核心判断：Catalog 是湖仓的"大脑"，它不存储数据文件但存储"数据在哪里、属于谁、长什么样"的全部定位信息。没有 Catalog，多引擎查询退化成各自猜测文件布局。**
 
-**场景**：
-```yaml
-查询与分析需求：
+Catalog 在 Iceberg 中的角色可以这样精确描述：它存储的是表名到当前快照元数据文件指针的映射。当 Trino 查询 `lakehouse.orders` 这张表时，它先从 Catalog 获取这张表的当前快照指针（指向 S3 上的一个 manifest list 文件路径），然后从 manifest list 读到所有 manifest 文件路径，再从 manifest 读到所有数据文件路径和统计信息——整条链路从 Catalog 开始，Catalog 提供的是"入口"。如果 Spark 和 Trino 连接不同的 Catalog（比如 Spark 用 Hive Metastore，Trino 用 AWS Glue），它们读到的当前快照指针可能不同——这就是前面三个引擎看到不一致表定义的根因。
 
-数据分析师："要分析数据湖中的数据"
+**主流 Catalog 的机制差异不是"换个名字"，而是管理范围和架构定位不同：**
 
-架构师："如何支持交互式查询？"
+Hive Metastore 是最早的元数据管理方案。它管理的是"表名 + 分区路径列表"——给定一个表名和分区值，Hive Metastore 返回该分区在 HDFS/S3 上的目录路径。它的局限在于元数据和数据的松耦合——分区路径指向的是一个 S3 目录，目录里的文件是否完整、是否属于当前版本、schema 是否匹配，Hive Metastore 不保证。写入失败后目录里可能有不完整文件，Hive Metastore 的分区指针已经指向这个目录，下游查询直接命中半成品数据。Iceberg 使用 Hive Metastore 时只存一个元数据文件指针（而不是分区目录列表），快照和 manifest 层保证了数据完整性。
 
-新工程师："如何加速查询？"
-```
+AWS Glue Catalog 是 Hive Metastore 的云托管版本——同样的机制，但不需要运维 Metastore 集群。Glue 的优势是与 AWS 生态深度集成（Athena、EMR、Glue ETL 都默认使用 Glue Catalog），劣势是跨云场景下 Glue 不适用——MinIO + Iceberg 在私有环境部署时不能用 Glue。
 
-**问题**：
-- 如何查询数据湖？
-- 如何加速查询性能？
-- 如何支持交互式分析？
-- 如何与BI工具集成？
-- 有哪些优化策略？
+Nessie 和 Iceberg REST Catalog 代表新一代 Catalog 方案。它们的核心理念是"Git-like 分支管理"——Nessie 支持分支（branch）、标签（tag）和合并（merge），数据工程师可以在独立分支上做 schema 变更或数据重写，验证无误后合并到主分支。这对湖仓的实验性操作（比如测试新的分区策略、试跑新的 ETL 逻辑）提供了隔离环境——实验失败不影响主分支的查询，不需要回滚。Iceberg REST Catalog 是 Iceberg 官方定义的标准化 Catalog 接口——任何实现 REST Catalog 规范的服务都可以作为 Iceberg 的 Catalog，这解耦了 Catalog 的具体实现和 Iceberg 的元数据访问。
 
-**答案**：**数据湖查询通过Presto、Trino、Athena等SQL引擎实现，需要通过分区优化、文件格式优化、统计信息收集、查询优化等技术提升查询性能，支持与BI工具集成实现数据分析**
+Unity Catalog 是 Databricks 的商业 Catalog 方案，它在 Delta Lake 生态内提供统一的元数据、权限和血缘管理。选择 Unity Catalog 意味着选择 Databricks 的平台绑定——开放性和控制权需要评估。
+
+**边界和代价。** Catalog 不解决数据质量问题——它知道"表在哪里"但不验证"数据是否正确"。Catalog 不解决权限治理的全链路——Iceberg 表级别的权限需要 Catalog 和计算引擎协同（Trino 的权限配置在 Trino 自身的 access control 层，不是 Catalog 层），行级和列级权限需要额外的治理工具。Catalog 的部署和运维是额外成本——Hive Metastore 需要独立的 MySQL 后端和高可用配置，Nessie 需要独立的版本化存储服务，REST Catalog 需要 API 服务层。
+
+**核心判断的推论：多引擎查询的"一致性"依赖 Catalog 的"唯一性"。** 如果 Spark 用 Hive Metastore，Trino 用 Glue Catalog，Flink 用 REST Catalog——三个 Catalog 的元数据可能不同步，多引擎查询的一致性就无法保证。正确的做法是所有引擎共享同一个 Catalog 实例——Spark、Trino、Flink 全部指向同一个 Hive Metastore 或同一个 REST Catalog endpoint。这不是"推荐做法"，而是"如果不这么做，多引擎查询就会出问题"的硬约束。
+
+从系统连接看，第 9 章 OLAP 的查询加速依赖稳定的表定义来源——ClickHouse 从 Iceberg 表同步宽表数据时，必须通过 Catalog 获取一致的快照定义，否则同步的数据和湖仓的数据不一致。第 8 章流处理的 Flink 任务写入 Iceberg 表后更新 Catalog 快照指针——下游 Trino 查询读取同一个 Catalog 的同一个快照指针，这就是"流写批读"的元数据一致性基础。
