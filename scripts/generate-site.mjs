@@ -357,6 +357,35 @@ function readSections(chapterNum) {
   return sections;
 }
 
+function extractSectionTitle(content) {
+  const match = content.match(/^### \d+\.\d+\s+(.+)/m);
+  return match ? match[1].trim() : null;
+}
+
+function readSectionsDetailed(chapterNum) {
+  const padded = String(chapterNum).padStart(2, '0');
+  const sections = [];
+  for (let i = 1; i <= 20; i++) {
+    const file = path.join(root, 'manuscript', `chapter-${padded}-section-${i}-complete.md`);
+    if (fs.existsSync(file)) {
+      let content = fs.readFileSync(file, 'utf8').trim();
+      if (Buffer.byteLength(content, 'utf8') <= STUB_THRESHOLD) continue;
+
+      if (i === 1) {
+        const lines = content.split('\n');
+        const firstH3 = lines.findIndex(line => /^### \d+\.\d+/.test(line));
+        if (firstH3 > 0) {
+          content = lines.slice(firstH3).join('\n').trim();
+        }
+      }
+
+      const title = extractSectionTitle(content);
+      sections.push({ num: i, title: title || `${chapterNum}.${i}`, content });
+    }
+  }
+  return sections;
+}
+
 function integrateSectionsInOverview(overviewContent, chapterNum) {
   const sections = readSections(chapterNum);
   if (sections.length === 0) return overviewContent;
@@ -403,7 +432,20 @@ function renderCheckpoints(chapterNum) {
   return `::: info 本章验收问题\n${items}\n:::\n`;
 }
 
+// --- Split-aware chapter page generation ---
+
+// Pre-compute section metadata (populated in main loop)
+const chapterSectionsMap = new Map();
+
+function linkFor(chapter) {
+  if (chapterSectionsMap.has(chapter.chapter)) {
+    return `/chapters/${String(chapter.chapter).padStart(2, '0')}/`;
+  }
+  return `/chapters/${chapter.target.replace(/\.md$/, '')}`;
+}
+
 function chapterPage(chapter) {
+  // Single-page chapter (no sections): keep original behavior
   const rawSource = stripH1(read(chapter.source)).trim();
   const source = integrateSectionsInOverview(rawSource, chapter.chapter);
   const visualPath = chapter.chapter <= 5 ? `\n![${chapter.title}](/images/chapter-${String(chapter.chapter).padStart(2, '0')}.svg)\n` : '';
@@ -424,8 +466,100 @@ ${source}
 `;
 }
 
-function linkFor(chapter) {
-  return `/chapters/${chapter.target.replace(/\.md$/, '')}`;
+function chapterIndexPage(chapter, sections) {
+  const rawSource = stripH1(read(chapter.source)).trim();
+  const lines = rawSource.split('\n');
+
+  // Split source: intro (before subsections under 机制解释) + closing (from 系统位置)
+  const mechIdx = lines.findIndex(line => line.startsWith('## 机制解释'));
+  let intro, closing;
+  if (mechIdx !== -1) {
+    const firstSubIdx = lines.findIndex((line, idx) => idx > mechIdx && line.startsWith('### '));
+    const sysIdx = lines.findIndex(line => line.startsWith('## 系统位置'));
+    if (firstSubIdx !== -1 && sysIdx !== -1) {
+      intro = lines.slice(0, firstSubIdx).join('\n').trimEnd();
+      closing = lines.slice(sysIdx).join('\n').trim();
+    } else {
+      intro = rawSource;
+      closing = '';
+    }
+  } else {
+    intro = rawSource;
+    closing = '';
+  }
+
+  // Section links table
+  const padded = String(chapter.chapter).padStart(2, '0');
+  const sectionRows = sections
+    .map(s => `| [${padded}.${s.num}](/chapters/${padded}/${padded}-${s.num}) | ${s.title} |`)
+    .join('\n');
+  const linksTable = `\n## 本章内容\n\n| 节号 | 主题 |\n|------|------|\n${sectionRows}\n`;
+
+  // Frontmatter with prev/next
+  const prevChapter = chapters[chapters.findIndex(c => c.chapter === chapter.chapter) - 1];
+  const firstSection = sections[0];
+  const prevLink = prevChapter ? linkFor(prevChapter) : null;
+  const prevText = prevChapter ? `${prevChapter.chapter}. ${prevChapter.title}` : null;
+  const nextLink = firstSection ? `/chapters/${padded}/${padded}-${firstSection.num}` : null;
+  const nextText = firstSection ? `${padded}.${firstSection.num} ${firstSection.title}` : null;
+
+  const fm = [
+    '---',
+    `title: "${chapter.chapter}. ${chapter.title}"`,
+    `description: "${chapter.summary}"`,
+    prevText ? `prev: { text: "${prevText}", link: "${prevLink}" }` : 'prev: false',
+    nextText ? `next: { text: "${nextText}", link: "${nextLink}" }` : 'next: false',
+    '---',
+    ''
+  ].join('\n');
+
+  const visualPath = chapter.chapter <= 5
+    ? `\n![${chapter.title}](/images/chapter-${padded}.svg)\n`
+    : '';
+
+  return `${fm}# ${chapter.chapter}. ${chapter.title}
+
+::: tip 本章导读
+${chapter.summary}
+:::
+${renderCheckpoints(chapter.chapter)}
+${visualPath}
+
+\`\`\`mermaid
+${chapter.diagram}
+\`\`\`
+
+${intro}
+${linksTable}
+${closing ? '\n' + closing : ''}
+`;
+}
+
+function sanitizeYaml(str) {
+  return str.replace(/["""'"'""]/g, '').replace(/\n/g, ' ').trim();
+}
+
+function generateSectionPage(chapter, section, prevRef, nextRef) {
+  const padded = String(chapter.chapter).padStart(2, '0');
+  const fullTitle = sanitizeYaml(`${padded}.${section.num} ${section.title}`);
+  const desc = sanitizeYaml(section.content.replace(/[#*`\[\]{}|>!]/g, '')).slice(0, 120);
+  const prevLine = prevRef
+    ? `prev: { text: "${prevRef.text}", link: "${prevRef.link}" }`
+    : 'prev: false';
+  const nextLine = nextRef
+    ? `next: { text: "${nextRef.text}", link: "${nextRef.link}" }`
+    : 'next: false';
+  const fm = [
+    '---',
+    `title: "${fullTitle}"`,
+    `description: "${desc}"`,
+    prevLine,
+    nextLine,
+    '---',
+    ''
+  ].join('\n');
+
+  return `${fm}${section.content}\n`;
 }
 
 function createIndex() {
@@ -740,13 +874,30 @@ function createSourcesPage() {
 }
 
 function createConfig() {
-  // Build sidebar with 5-part nested structure
+  // Build sidebar with 5-part nested structure + section sub-items
   const sidebarItems = learningParts.map(part => ({
     text: part.title,
     collapsed: false,
     items: chapters
       .filter(c => c.chapter >= part.range[0] && c.chapter <= part.range[1])
-      .map(c => ({ text: `${c.chapter}. ${c.title}`, link: linkFor(c) }))
+      .map(c => {
+        const sections = chapterSectionsMap.get(c.chapter);
+        if (sections && sections.length > 0) {
+          const padded = String(c.chapter).padStart(2, '0');
+          return {
+            text: `${c.chapter}. ${c.title}`,
+            collapsed: false,
+            items: [
+              { text: '章节概览', link: `/chapters/${padded}/` },
+              ...sections.map(s => ({
+                text: `${padded}.${s.num} ${s.title}`,
+                link: `/chapters/${padded}/${padded}-${s.num}`
+              }))
+            ]
+          };
+        }
+        return { text: `${c.chapter}. ${c.title}`, link: linkFor(c) };
+      })
   }));
   return `import { defineConfig } from 'vitepress'
 
@@ -1044,6 +1195,14 @@ ensureDir(chaptersDir);
 ensureDir(path.join(siteDir, '.vitepress', 'theme'));
 ensureDir(path.join(siteDir, 'public', 'images'));
 
+// Pre-compute section metadata for split chapters
+for (const ch of chapters) {
+  const sections = readSectionsDetailed(ch.chapter);
+  if (sections.length > 0) {
+    chapterSectionsMap.set(ch.chapter, sections);
+  }
+}
+
 write(path.join(siteDir, 'index.md'), createIndex());
 write(path.join(siteDir, 'book.md'), createBookPage());
 write(path.join(siteDir, 'catalog.md'), createCatalog());
@@ -1059,8 +1218,66 @@ write(path.join(siteDir, '.vitepress', 'theme', 'custom.css'), createCss());
 write(path.join(siteDir, 'public', 'images', 'logo.svg'), createLogo());
 writeChapterVisuals();
 
+let totalSectionPages = 0;
+
 for (const chapter of chapters) {
-  write(path.join(chaptersDir, chapter.target), chapterPage(chapter));
+  const sections = chapterSectionsMap.get(chapter.chapter);
+
+  if (sections && sections.length > 0) {
+    // Split chapter: generate index page + section pages
+    const padded = String(chapter.chapter).padStart(2, '0');
+    const chapterDir = path.join(chaptersDir, padded);
+    ensureDir(chapterDir);
+
+    // Chapter index page
+    write(path.join(chapterDir, 'index.md'), chapterIndexPage(chapter, sections));
+
+    // Section pages with prev/next chain
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
+      const chapterLink = `/chapters/${padded}/`;
+
+      let prevRef, nextRef;
+
+      // prev: previous section, or chapter index if first
+      if (i === 0) {
+        prevRef = { text: `${chapter.chapter}. ${chapter.title}`, link: chapterLink };
+      } else {
+        const prevSection = sections[i - 1];
+        prevRef = {
+          text: `${padded}.${prevSection.num} ${prevSection.title}`,
+          link: `/chapters/${padded}/${padded}-${prevSection.num}`
+        };
+      }
+
+      // next: next section, or next chapter index if last
+      if (i === sections.length - 1) {
+        const nextChapter = chapters[chapters.findIndex(c => c.chapter === chapter.chapter) + 1];
+        if (nextChapter) {
+          nextRef = { text: `${nextChapter.chapter}. ${nextChapter.title}`, link: linkFor(nextChapter) };
+        } else {
+          nextRef = null;
+        }
+      } else {
+        const nextSection = sections[i + 1];
+        nextRef = {
+          text: `${padded}.${nextSection.num} ${nextSection.title}`,
+          link: `/chapters/${padded}/${padded}-${nextSection.num}`
+        };
+      }
+
+      write(
+        path.join(chapterDir, `${padded}-${section.num}.md`),
+        generateSectionPage(chapter, section, prevRef, nextRef)
+      );
+      totalSectionPages++;
+    }
+  } else {
+    // Single-page chapter: keep original behavior
+    write(path.join(chaptersDir, chapter.target), chapterPage(chapter));
+  }
 }
 
-console.log(`Generated ${chapters.length} chapters into site/`);
+const splitChapters = [...chapterSectionsMap.keys()].map(n => String(n).padStart(2, '0'));
+console.log(`Generated ${chapters.length - chapterSectionsMap.size} single-page chapters + ${chapterSectionsMap.size} split chapters (${totalSectionPages} section pages) into site/`);
+console.log(`Split chapters: ${splitChapters.join(', ')}`);
