@@ -11,7 +11,29 @@ const sidebarItems = [
       },
       {
         "text": "1. 数据库基础：用 PostgreSQL 建立数据系统直觉",
-        "link": "/chapters/01-postgresql-foundations"
+        "collapsed": false,
+        "items": [
+          {
+            "text": "章节概览",
+            "link": "/chapters/01/"
+          },
+          {
+            "text": "01.1 为什么要从 PostgreSQL 开始理解数据系统？",
+            "link": "/chapters/01/01-1"
+          },
+          {
+            "text": "01.2 PostgreSQL 核心结构：数据系统是如何被组织起来的",
+            "link": "/chapters/01/01-2"
+          },
+          {
+            "text": "01.3 必学概念：从主键、外键、约束到事务、索引和分区",
+            "link": "/chapters/01/01-3"
+          },
+          {
+            "text": "01.4 关键问题：从业务库走向分析系统的边界",
+            "link": "/chapters/01/01-4"
+          }
+        ]
       },
       {
         "text": "2. SQL 分析能力：大数据方向第一硬技能",

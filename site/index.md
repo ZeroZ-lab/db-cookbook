@@ -35,7 +35,7 @@ features:
 让读者先理解数据如何被组织、约束、查询、优化，以及单机数据库为什么会出现边界。
 
 - [0. 核心定位](/chapters/00-positioning)：说明本书为什么以 PostgreSQL 为入口，如何把数据库学习连接到大数据与 AI 数据基础设施。
-- [1. 数据库基础：用 PostgreSQL 建立数据系统直觉](/chapters/01-postgresql-foundations)：用 PostgreSQL 建立数据如何被组织、约束、查询和保持一致的基础直觉。
+- [1. 数据库基础：用 PostgreSQL 建立数据系统直觉](/chapters/01/)：用 PostgreSQL 建立数据如何被组织、约束、查询和保持一致的基础直觉。
 - [2. SQL 分析能力：大数据方向第一硬技能](/chapters/02/)：把 SQL 从查询语法提升为分析表达能力，训练取数、聚合、关联、窗口和指标口径。
 - [3. PostgreSQL 大表能力：理解单机数据库边界](/chapters/03/)：从分区、索引、物化视图和执行计划理解 PostgreSQL 如何支撑大表，以及边界在哪里。
 

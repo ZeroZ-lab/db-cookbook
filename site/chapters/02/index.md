@@ -1,7 +1,7 @@
 ---
 title: "2. SQL 分析能力：大数据方向第一硬技能"
 description: "把 SQL 从查询语法提升为分析表达能力，训练取数、聚合、关联、窗口和指标口径。"
-prev: { text: "1. 数据库基础：用 PostgreSQL 建立数据系统直觉", link: "/chapters/01-postgresql-foundations" }
+prev: { text: "1. 数据库基础：用 PostgreSQL 建立数据系统直觉", link: "/chapters/01/" }
 next: { text: "02.1 SQL不是语法题，而是分析表达能力", link: "/chapters/02/02-1" }
 ---
 # 2. SQL 分析能力：大数据方向第一硬技能
