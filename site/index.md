@@ -8,9 +8,6 @@ hero:
     - theme: brand
       text: 开始阅读
       link: /chapters/00-positioning
-    - theme: alt
-      text: 查看路线图
-      link: /roadmap
 features:
   - title: 不是 SQL 语法手册
     details: 每章从真实问题进入，解释机制、边界、系统位置和实践任务。
@@ -28,10 +25,8 @@ features:
 
 ## 你现在怎么验证自己学会了
 
-- [SQL 实验室](/sql-lab)：先把第 2 章的 SQL 样例从“能读懂”推进到“能运行、能解释口径”。
-- [项目实战状态页](/projects)：看清 7 个项目哪些可以直接阅读，哪些只完成静态骨架，哪些仍依赖外部运行环境。
 - [第 15 章：推荐学习顺序](/chapters/15-learning-order)：判断自己现在该补 SQL、建模、链路还是治理。
-- [第 16 章：能力地图](/chapters/16-capability-map)：把“学过哪些工具”转换成“具备哪些可复用能力”。
+- [第 16 章：能力地图](/chapters/16-capability-map)：把”学过哪些工具”转换成”具备哪些可复用能力”。
 
 ## 分阶段阅读路径
 

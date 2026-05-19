@@ -4,7 +4,6 @@ import path from 'node:path';
 const root = process.cwd();
 const siteDir = path.join(root, 'site');
 const chaptersDir = path.join(siteDir, 'chapters');
-const projectManifestPath = path.join(root, 'project-workbench', 'project-manifest.json');
 
 const chapters = [
   {
@@ -620,9 +619,6 @@ hero:
     - theme: brand
       text: 开始阅读
       link: /chapters/00-positioning
-    - theme: alt
-      text: 查看路线图
-      link: /roadmap
 features:
   - title: 不是 SQL 语法手册
     details: 每章从真实问题进入，解释机制、边界、系统位置和实践任务。
@@ -640,270 +636,12 @@ features:
 
 ## 你现在怎么验证自己学会了
 
-- [SQL 实验室](/sql-lab)：先把第 2 章的 SQL 样例从“能读懂”推进到“能运行、能解释口径”。
-- [项目实战状态页](/projects)：看清 7 个项目哪些可以直接阅读，哪些只完成静态骨架，哪些仍依赖外部运行环境。
 - [第 15 章：推荐学习顺序](/chapters/15-learning-order)：判断自己现在该补 SQL、建模、链路还是治理。
-- [第 16 章：能力地图](/chapters/16-capability-map)：把“学过哪些工具”转换成“具备哪些可复用能力”。
+- [第 16 章：能力地图](/chapters/16-capability-map)：把”学过哪些工具”转换成”具备哪些可复用能力”。
 
 ## 分阶段阅读路径
 
 ${partSections}
-`;
-}
-
-function createCatalog() {
-  const rows = chapters
-    .map((chapter) => `| [${chapter.chapter}. ${chapter.title}](${linkFor(chapter)}) | ${chapter.summary} |`)
-    .join('\n');
-  const parts = learningParts
-    .map((part) => `- **${part.title}**：${part.promise}`)
-    .join('\n');
-  return `# 全书目录
-
-## 全书分部
-
-${parts}
-
-## 章节清单
-
-| 章节 | 阅读目标 |
-| --- | --- |
-${rows}
-
-## 阅读建议
-
-如果你已经会写基础 SQL，但不理解数据平台，可以从第 3 章开始，先补齐大表、执行计划和单机边界，再进入第 4 章 OLTP / OLAP 分化。
-
-如果你正在做 AI 应用或 RAG，不建议直接跳到向量数据库。至少先读第 5-6 章，理解数据建模、同步、质量和血缘，否则向量检索很容易变成不可治理的临时索引。
-
-如果你想形成工程作品集，先通读第 14 章项目实战，再回到相关章节补机制。项目不是展示工具安装，而是展示数据从业务库进入分析系统、实时系统、AI 检索和治理系统的完整链路。
-`;
-}
-
-function createBookPage() {
-  const sections = [];
-
-  sections.push(`# 数据库全书：从 PostgreSQL 到智能数据系统
-
-这是一份连续阅读版大文档，把全书 18 个章节按学习路径串在同一个页面中。它适合从头到尾建立完整知识框架；如果需要查找单章、复制链接或使用本页目录跳转，可以回到 [全书目录](/catalog) 或左侧章节导航。
-
-## 阅读方式
-
-- 先看每一部分开头的定位，理解这一组章节解决什么阶段的问题。
-- 每章都按“问题切入、核心判断、机制解释、系统位置、场景案例、常见误区、实战任务、小结引出下一章”阅读。
-- 遇到工具名时，不先背定义，先问它解决什么问题、不解决什么问题、为什么在这个阶段出现。
-`);
-
-  for (const part of learningParts) {
-    sections.push(`## ${part.title}
-
-${part.promise}
-`);
-
-    const partChapters = chapters.filter((chapter) => chapter.chapter >= part.range[0] && chapter.chapter <= part.range[1]);
-    for (const chapter of partChapters) {
-      const rawSource = stripH1(read(chapter.source)).trim();
-      const source = integrateSectionsInOverview(rawSource, chapter.chapter);
-      sections.push(`## ${chapter.chapter}. ${chapter.title}
-
-::: tip 本章导读
-${chapter.summary}
-:::
-
-${renderCheckpoints(chapter.chapter)}
-
-${source}
-`);
-    }
-  }
-
-  return sections.join('\n\n');
-}
-
-function createRoadmap() {
-  return `# 学习路线图
-
-这本书采用演化式叙事：先从 PostgreSQL 建立数据库直觉，再逐步进入分析系统、大数据平台和 AI 数据基础设施。
-
-\`\`\`mermaid
-flowchart LR
-  A["PostgreSQL 基础"] --> B["SQL 分析能力"]
-  B --> C["大表与查询优化"]
-  C --> D["OLTP vs OLAP"]
-  D --> E["数仓建模"]
-  E --> F["ETL / CDC"]
-  F --> G["批处理 / 实时处理"]
-  G --> H["OLAP 数据库"]
-  H --> I["湖仓"]
-  I --> J["向量数据库"]
-  I --> K["图数据库"]
-  J --> L["数据治理"]
-  K --> L
-  L --> M["智能数据系统"]
-\`\`\`
-
-## 最小闭环
-
-\`\`\`mermaid
-flowchart LR
-  P["PostgreSQL 业务数据"] --> S["SQL 分析"]
-  S --> W["数仓建模"]
-  W --> E["ETL / CDC"]
-  E --> C["ClickHouse / Spark / Flink"]
-  C --> A["向量检索 / 图关系分析"]
-  A --> APP["指标、BI、RAG、GraphRAG 和数据应用"]
-\`\`\`
-`;
-}
-
-function createGlossary() {
-  const glossary = JSON.parse(fs.readFileSync(path.join(siteDir, '.vitepress', 'glossary.json'), 'utf8'));
-  let md = '# 术语表\n';
-  for (const [category, terms] of Object.entries(glossary)) {
-    md += `\n## ${category}\n\n`;
-    for (const [term, def] of Object.entries(terms)) {
-      md += `- **${term}**：${def}\n`;
-    }
-  }
-  return md;
-}
-
-function createProjects() {
-  const manifest = JSON.parse(fs.readFileSync(projectManifestPath, 'utf8'));
-  const projectRows = manifest.projects.map((project) => {
-    const blockerCount = project.blockedBy.length;
-    const artifactCount = project.requiredArtifacts.length;
-    return `| ${project.title} | ${project.stage} | \`${project.runtimeStatus}\` | ${blockerCount} | ${artifactCount} |`;
-  }).join('\n');
-
-  return `# 项目实战总览
-
-7 个项目按系统演化顺序推进。
-
-\`\`\`mermaid
-flowchart TB
-  P1["PostgreSQL 电商数据分析库"] --> P2["PostgreSQL -> ClickHouse 分析链路"]
-  P2 --> P3["PostgreSQL CDC 实时数仓 Demo"]
-  P3 --> P4["Mini Lakehouse"]
-  P4 --> P5["RAG 向量知识库"]
-  P5 --> P6["知识图谱与 GraphRAG"]
-  P6 --> P7["数据治理 Mini Platform"]
-\`\`\`
-
-详见 [第 14 章：大数据方向项目实战](/chapters/14-projects)。
-
-## 状态边界
-
-- 书稿已形成完整路线。
-- 自动验证已通过。
-- 项目实战大多仍是可检查骨架，不是端到端可运行工程。
-- 事实核查为初核，不是出版最终关闭。
-
-## 执行状态
-
-| 项目 | 系统位置 | 当前状态 | 阻塞项 | 必需产物 |
-| --- | --- | --- | ---: | ---: |
-${projectRows}
-
-完整执行总表由 \`node scripts/generate-project-runbook.mjs\` 从 \`project-workbench/project-manifest.json\` 生成，维护在 \`docs/project-runbook.md\`。
-
-\`pnpm projects:verify\` 只证明项目目录、交付清单、关键 SQL / JSON / 文档和 manifest 状态一致；不证明数据库、消息队列、计算引擎或 AI 检索链路已经真实运行。
-`;
-}
-
-function createSqlLab() {
-  return `# SQL 实验室
-
-这一页用于把书中的 SQL 示例从“可读”推进到“可运行”。
-
-## 样例数据
-
-- PostgreSQL 建表与样例数据：[examples/ecommerce-postgres.sql](/examples/ecommerce-postgres.sql)
-- 第 2 章 SQL 查询练习：[examples/chapter-02-queries.sql](/examples/chapter-02-queries.sql)
-
-## 建议运行方式
-
-\`\`\`bash
-createdb db_cookbook
-psql db_cookbook -f site/public/examples/ecommerce-postgres.sql
-psql db_cookbook -f site/public/examples/chapter-02-queries.sql
-\`\`\`
-
-也可以使用仓库脚本：
-
-\`\`\`bash
-DB_NAME=db_cookbook_lab pnpm sql:run
-\`\`\`
-
-## 当前验证
-
-当前仓库提供两个层级的验证：
-
-\`\`\`bash
-node scripts/verify-sql-examples.mjs
-\`\`\`
-
-这个脚本会检查样例 schema、表名、字段名和第 2 章查询引用是否一致。
-
-如果本地安装了 PostgreSQL，再执行上面的 \`createdb\` / \`psql\` 命令做真实运行验证。静态验证不能替代数据库执行，它只能提前发现文档和 SQL 样例之间的结构漂移。
-
-## 数据模型
-
-\`\`\`mermaid
-erDiagram
-  users ||--o{ orders : places
-  orders ||--o{ order_items : contains
-  products ||--o{ order_items : appears_in
-  orders ||--o{ payments : paid_by
-  users ||--o{ events : emits
-\`\`\`
-
-## 验收目标
-
-- 能跑通基础查询、聚合、JOIN、CTE、窗口函数和指标 SQL。
-- 能用同一套样例数据解释第 1-5 章中的表结构、指标口径和数仓建模。
-- 后续每章新增 SQL 示例时，都优先接入这套样例数据。
-`;
-}
-
-function createSourcesPage() {
-  return `# 事实核查与来源
-
-这本书的技术判断分为三类：
-
-- 官方事实：来自数据库、框架或项目官方文档。
-- 编辑判断：基于系统设计经验的解释和取舍。
-- 待核查内容：后续出版级精修时必须补证据或降级表述。
-
-## 当前来源矩阵
-
-| 主题 | 优先来源 | 用途 |
-| --- | --- | --- |
-| PostgreSQL | https://www.postgresql.org/docs/ | 分区、索引、物化视图、逻辑复制、事务 |
-| VitePress | https://vitepress.dev/ | 在线阅读站点、导航、Markdown、构建 |
-| Kafka | https://kafka.apache.org/documentation/ | Topic、Partition、Offset、Connect、语义 |
-| Flink | https://nightlies.apache.org/flink/flink-docs-stable/ | Event Time、Watermark、State、Checkpoint |
-| ClickHouse | https://clickhouse.com/docs/ | MergeTree、列式存储、物化视图 |
-| Apache Doris | https://doris.apache.org/docs/ | FE/BE、表模型、实时数仓 |
-| DuckDB | https://duckdb.org/docs/ | 本地 OLAP、Parquet 查询 |
-| Apache Iceberg | https://iceberg.apache.org/docs/ | 表格式、快照、分区演化 |
-| pgvector | https://github.com/pgvector/pgvector | PostgreSQL 向量扩展能力 |
-| Milvus | https://milvus.io/docs | 向量数据库、索引、检索 |
-| Qdrant | https://qdrant.tech/documentation/ | 向量数据库、过滤和检索 |
-| Neo4j | https://neo4j.com/docs/ | 图数据库和 Cypher |
-
-## 精修要求
-
-- 强事实必须能落到官方文档或项目文档。
-- 产品定位类表述优先写成“适合/常见用于”，避免绝对化。
-- Exactly Once、事务、CDC、湖仓表格式等高误解概念必须单独核查。
-- 每轮出版级精修都要更新本页。
-
-## 待核查清单
-
-完整待核查条目维护在仓库文档 \`docs/fact-check-matrix.md\`。
-
-当前在线版本的来源矩阵表示“优先查证来源”，不表示所有章节事实已经逐条核查完成。出版级交付前，必须完成 PostgreSQL、Kafka、Flink、ClickHouse、Doris、DuckDB、Iceberg、pgvector、Milvus、Qdrant、Neo4j 等高风险技术判断的逐条核查。
 `;
 }
 
@@ -942,38 +680,15 @@ export default defineConfig({
   description: '从 PostgreSQL 到智能数据系统',
   lang: 'zh-CN',
   cleanUrls: true,
-  ignoreDeadLinks: [
-    /^\\/examples\\//
-  ],
   head: [
     ['link', { rel: 'icon', href: '/images/logo.svg', type: 'image/svg+xml' }]
   ],
   themeConfig: {
     logo: '/images/logo.svg',
     nav: [
-      { text: '开始阅读', link: '/chapters/00-positioning' },
-      { text: '完整大文档', link: '/book' },
-      { text: '全书目录', link: '/catalog' },
-      { text: '路线图', link: '/roadmap' },
-      { text: '术语表', link: '/glossary' },
-      { text: 'SQL 实验室', link: '/sql-lab' },
-      { text: '项目实战', link: '/projects' }
+      { text: '开始阅读', link: '/chapters/00-positioning' }
     ],
-    sidebar: [
-      ...sidebarItems,
-      {
-        text: '辅助阅读',
-        items: [
-          { text: '学习路线图', link: '/roadmap' },
-          { text: '完整大文档', link: '/book' },
-          { text: '全书目录', link: '/catalog' },
-          { text: '术语表', link: '/glossary' },
-          { text: 'SQL 实验室', link: '/sql-lab' },
-          { text: '项目实战总览', link: '/projects' },
-          { text: '事实核查与来源', link: '/sources' }
-        ]
-      }
-    ],
+    sidebar: sidebarItems,
     outline: {
       level: [2, 3],
       label: '本页目录'
@@ -1012,14 +727,12 @@ export default defineConfig({
 function createTheme() {
   return `import DefaultTheme from 'vitepress/theme'
 import Mermaid from './Mermaid.vue'
-import GlossaryTerm from './GlossaryTerm.vue'
 import './custom.css'
 
 export default {
   extends: DefaultTheme,
   enhanceApp({ app }) {
     app.component('Mermaid', Mermaid)
-    app.component('GlossaryTerm', GlossaryTerm)
   }
 }
 `;
@@ -1238,13 +951,6 @@ for (const ch of chapters) {
 }
 
 write(path.join(siteDir, 'index.md'), createIndex());
-write(path.join(siteDir, 'book.md'), createBookPage());
-write(path.join(siteDir, 'catalog.md'), createCatalog());
-write(path.join(siteDir, 'roadmap.md'), createRoadmap());
-write(path.join(siteDir, 'glossary.md'), createGlossary());
-write(path.join(siteDir, 'projects.md'), createProjects());
-write(path.join(siteDir, 'sql-lab.md'), createSqlLab());
-write(path.join(siteDir, 'sources.md'), createSourcesPage());
 write(path.join(siteDir, '.vitepress', 'config.ts'), createConfig());
 write(path.join(siteDir, '.vitepress', 'theme', 'index.ts'), createTheme());
 write(path.join(siteDir, '.vitepress', 'theme', 'Mermaid.vue'), createMermaidComponent());
